@@ -3,7 +3,6 @@ import time
 import sys
 import os
 
-# Adicionar path para importar crypto_utils
 client_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'client')
 sys.path.insert(0, client_dir)
 
