@@ -75,9 +75,7 @@ class Blockchain:
                 self.chain = new_chain
                 return True
         return False
-    
-    
-            
+        
     def is_valid(self):
         """Verificar integridade da chain"""
         
