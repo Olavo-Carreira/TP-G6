@@ -172,9 +172,9 @@ def stats():
 # ========== INICIAR SERVIDOR ==========
 if __name__ == '__main__':
     print("=" * 50)
-    print("🚀 Servidor de Leilão P2P")
+    print("Servidor de Leilao P2P")
     print("=" * 50)
-    print(f"📡 Endpoints disponíveis:")
+    print(f"Endpoints disponiveis:")
     print(f"  - GET  /health")
     print(f"  - POST /register")
     print(f"  - GET  /users/public_keys")

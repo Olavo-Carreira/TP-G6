@@ -5,6 +5,7 @@ import threading
 from blockchain import Blockchain
 from network import start_p2p_server, connect_to_peer, send_message, broadcast_to_peers, receive_message
 from crypto_utils import generate_keypair, serialize_key, deserialize_key
+from ring import create_ring_signature, verify_ring_signature
 import json
 
 
@@ -102,6 +103,13 @@ class AuctionNode:
         
         except Exception as e:
             print(f"Erro ao registar: {e}")
+        
+        self.blockchain.add_transaction({
+        'type': 'USER_REGISTRATION',
+        'username': self.username,
+        'public_key': pub_key_bytes.decode('utf-8'),
+        'timestamp': time.time()
+        })
     
     def announce_to_server(self):
         """Anunciar presença ao servidor"""
@@ -270,6 +278,147 @@ class AuctionNode:
         
         return new_block
 
+"""
+    def create_test_certificate(self):
+        ""Criar certificado de teste com ring signature usando blockchain""
+        
+        print("\n" + "="*50)
+        print("Criando Certificado Ring Signature")
+        print("="*50)
+        
+        # 1. Obter chaves públicas da BLOCKCHAIN (não do servidor!)
+        print("\nBuscando chaves publicas na blockchain...")
+        
+        user_registrations = self.blockchain.get_transactions_by_type('USER_REGISTRATION')
+        
+        if len(user_registrations) < 2:
+            print("Precisa de pelo menos 2 peers registados na blockchain")
+            print(f"   Atual: {len(user_registrations)} peers")
+            print("Dica: Outros peers precisam se registar e minerar blocos")
+            return
+        
+        # Extrair chaves públicas únicas (evitar duplicatas)
+        all_public_keys = []
+        registered_users = set()
+        
+        for tx in user_registrations:
+            username = tx.get('username')
+            pub_key = tx.get('public_key')
+            
+            # Evitar duplicatas (mesmo user pode ter múltiplos registos)
+            if username not in registered_users and pub_key:
+                all_public_keys.append(pub_key)
+                registered_users.add(username)
+        
+        print(f"Ring com {len(all_public_keys)} membros da blockchain")
+        print(f"   Peers: {', '.join(registered_users)}")
+        
+        # Verificar se nossa chave está no ring
+        our_key = serialize_key(self.public_key, is_private=False).decode('utf-8')
+        if our_key not in all_public_keys:
+            print("Sua chave nao esta na blockchain ainda!")
+            print("Minerando bloco de registo...")
+            
+            # Minerar bloco com nosso registo
+            new_block = self.blockchain.mine_pending_transactions()
+            if new_block:
+                print(f"Bloco #{new_block.index} minerado com seu registo")
+                
+                # Broadcast do bloco
+                message = {
+                    'type': 'NEW_BLOCK',
+                    'block': new_block.to_dict()
+                }
+                broadcast_to_peers(self.peer_sockets, message)
+                
+                # Adicionar nossa chave ao ring
+                all_public_keys.append(our_key)
+                registered_users.add(self.username)
+            else:
+                print("Falha ao minerar bloco")
+                return
+        
+        # 2. Criar mensagem do certificado
+        certificate_data = {
+            'issuer': 'anonymous',  # Anônimo!
+            'timestamp': time.time(),
+            'data': f'Certificado de teste - Ring de {len(all_public_keys)} peers',
+            'type': 'test_certificate',
+            'ring_members': list(registered_users)  # Para debug (pode remover)
+        }
+        
+        message = json.dumps(certificate_data, sort_keys=True)
+        
+        # 3. Criar ring signature
+        print("\nCriando ring signature...")
+        
+        try:
+            ring_sig = create_ring_signature(
+                message,
+                self.private_key,
+                all_public_keys
+            )
+            
+            print(f"Ring signature criada")
+            print(f"   - Ring size: {ring_sig['ring_size']}")
+            print(f"   - Key image: {ring_sig['key_image'][:16]}...")
+            
+        except ValueError as e:
+            print(f"Erro ao criar ring signature: {e}")
+            return
+        
+        # 4. Criar certificado completo
+        certificate = {
+            'data': certificate_data,
+            'ring_signature': ring_sig,
+            'public_keys': all_public_keys
+        }
+        
+        # 5. Verificar ring signature
+        print("\nVerificando ring signature...")
+        
+        is_valid = verify_ring_signature(
+            message,
+            ring_sig,
+            all_public_keys
+        )
+        
+        if is_valid:
+            print("Ring signature VALIDA")
+            print("   -> Assinatura verificada SEM revelar identidade!")
+        else:
+            print("Ring signature INVALIDA")
+        
+        # 6. Mostrar resumo
+        print("\n" + "="*50)
+        print("CERTIFICADO CRIADO")
+        print("="*50)
+        print(f"Tipo: {certificate_data['type']}")
+        print(f"Timestamp: {certificate_data['timestamp']}")
+        print(f"Ring size: {len(all_public_keys)} membros")
+        print(f"Fonte: Blockchain (transacoes USER_REGISTRATION)")
+        print(f"Membros: {', '.join(registered_users)}")
+        print(f"Anonimo: SIM (impossivel saber quem assinou)")
+        print(f"Verificavel: {'SIM' if is_valid else 'NAO'}")
+        print("="*50 + "\n")
+        
+        # 7. OPCIONAL: Adicionar certificado à blockchain
+        print("Deseja adicionar este certificado a blockchain? (s/n)")
+        choice = input("> ").lower()
+        
+        if choice == 's':
+            self.blockchain.add_transaction({
+                'type': 'RING_CERTIFICATE',
+                'certificate': certificate_data,
+                'ring_signature': ring_sig,
+                'timestamp': time.time()
+            })
+            print("Certificado adicionado as transacoes pendentes")
+            print("Use 'm' para minerar e propagar")
+        
+        return certificate
+"""
+
 
 # ========== TESTE ==========
 if __name__ == '__main__':
@@ -286,9 +435,10 @@ if __name__ == '__main__':
     node = AuctionNode(username, p2p_port=port)
     node.start()
     
-    print("\n💡 Comandos disponíveis:")
+    print("\nComandos disponiveis:")
     print("  m - Minerar bloco")
     print("  b - Ver blockchain")
+    print("  c - Criar certificado ring signature")
     print("  q - Sair\n")
 
     while True:
@@ -299,6 +449,8 @@ if __name__ == '__main__':
             node.mine_test_block()
         elif cmd == 'b':
             print(f"Chain: {len(node.blockchain.chain)} blocos")
+        elif cmd == 'c':
+            node.create_test_certificate()
         elif cmd == 'q':
             break
     

@@ -72,7 +72,7 @@ def sign_data(data, private_key):
     return signature
 
 def verify_signature(data, signature, public_key):
-    """Verificar assinatura com chave pública"""
+    """Verificar assinatura com chave publica"""
     
     if isinstance(data, str):
         data = data.encode()
@@ -94,27 +94,27 @@ def verify_signature(data, signature, public_key):
 if __name__ == '__main__':
     # Gerar chaves
     priv, pub = generate_keypair()
-    print("✅ Chaves geradas")
+    print("Chaves geradas")
     
     # Serializar
     priv_bytes = serialize_key(priv, is_private=True)
     pub_bytes = serialize_key(pub, is_private=False)
-    print("✅ Chaves serializadas")
+    print("Chaves serializadas")
     
     # Deserializar
     priv2 = deserialize_key(priv_bytes, is_private=True)
     pub2 = deserialize_key(pub_bytes, is_private=False)
-    print("✅ Chaves desserializadas")
+    print("Chaves desserializadas")
     
     # Assinar
     message = "Test message"
     sig = sign_data(message, priv)
-    print("✅ Dados assinados")
+    print("Dados assinados")
     
     # Verificar
     valid = verify_signature(message, sig, pub)
-    print(f"✅ Verificação: {valid}")
+    print(f"Verificacao: {valid}")
     
     # Hash
     h = hash_data(message)
-    print(f"✅ Hash: {h[:16]}...")
+    print(f"Hash: {h[:16]}...")
