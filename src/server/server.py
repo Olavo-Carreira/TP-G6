@@ -3,6 +3,7 @@ import time
 import sys
 import os
 
+# Adicionar path para importar crypto_utils
 client_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'client')
 sys.path.insert(0, client_dir)
 
@@ -172,9 +173,9 @@ def stats():
 # ========== INICIAR SERVIDOR ==========
 if __name__ == '__main__':
     print("=" * 50)
-    print("Servidor de Leilao P2P")
+    print("🚀 Servidor de Leilão P2P")
     print("=" * 50)
-    print(f"Endpoints disponiveis:")
+    print(f"📡 Endpoints disponíveis:")
     print(f"  - GET  /health")
     print(f"  - POST /register")
     print(f"  - GET  /users/public_keys")
