@@ -2,13 +2,28 @@ import socket
 import json
 import threading
 import time
+import struct  # <--- NOVO
 
 """Comunicacao P2P com sockets TCP"""
 
 BUFFER_SIZE = 4096
 TIMEOUT = 10
 
-# Server
+# ======== Funções auxiliares de I/O ========
+
+def recvall(sock, n):
+    """
+    Ler exatamente n bytes do socket (ou devolver None se a conexão fechar).
+    """
+    data = b''
+    while len(data) < n:
+        chunk = sock.recv(n - len(data))
+        if not chunk:
+            return None
+        data += chunk
+    return data
+
+# ======== Server ========
 
 def accept_connections(server_socket, message_handler):
     """Aceitar novas conexoes"""
@@ -48,27 +63,26 @@ def start_p2p_server(port, message_handler):
     
     return server_socket
 
+
 def handle_client(client_socket, address, message_handler):
     """Lidar com mensagens de cliente que esta conectado"""
     
     try:
         while True:
-            # Receber dados
-            data = client_socket.recv(BUFFER_SIZE)
-            
-            if not data:
+            message = receive_message(client_socket)
+            if message is None:
                 break
-            
-            message = json.loads(data.decode('utf-8'))
-            
+
+            # Chamar o handler do node
             message_handler(message, client_socket)
+
     except Exception as e:
         print(f"Erro ao lidar com cliente {address}: {e}")
     finally:
         client_socket.close()
         print(f"Conexao fechada com {address}")
-        
-# Cliente
+
+# ======== Cliente ========
 
 def connect_to_peer(ip, port):
     """Conectar a outro no P2P"""
@@ -84,27 +98,39 @@ def connect_to_peer(ip, port):
         print(f"Falha ao conectar a {ip}:{port}: {e}")
         return None
 
+
 def send_message(peer_socket, message_dict):
-    """Enviar mensagem JSON para peer"""
+    """Enviar mensagem JSON para peer (com prefixo de tamanho)"""
     
     try:
-        message_json = json.dumps(message_dict)
-        peer_socket.sendall(message_json.encode('utf-8'))
+        message_json = json.dumps(message_dict).encode('utf-8')
+        # 4 bytes com o tamanho da mensagem 
+        header = struct.pack('>I', len(message_json))
+        peer_socket.sendall(header + message_json)
         return True
     
     except Exception as e:
         print(f"Erro ao enviar mensagem: {e}")
         return False
 
+
 def receive_message(peer_socket):
-    """Receber mensagem JSON de peer"""
+    """Receber mensagem JSON de peer (com prefixo de tamanho)"""
     
     try:
-        data = peer_socket.recv(BUFFER_SIZE)
-        
+        # 1) Ler 4 bytes com o tamanho
+        raw_len = recvall(peer_socket, 4)
+        if not raw_len:
+            return None
+
+        msg_len = struct.unpack('>I', raw_len)[0]
+
+        # 2) Ler exatamente msg_len bytes
+        data = recvall(peer_socket, msg_len)
         if not data:
             return None
-        
+
+        # 3) Decodificar JSON
         message = json.loads(data.decode('utf-8'))
         return message
     
@@ -112,7 +138,7 @@ def receive_message(peer_socket):
         print(f"Erro ao receber mensagem: {e}")
         return None
     
-# Broadcast
+# ======== Broadcast ========
 
 def broadcast_to_peers(peer_sockets, message_dict):
     """Enviar mensagem para todos os peers conectados"""
@@ -121,7 +147,7 @@ def broadcast_to_peers(peer_sockets, message_dict):
     
     failed_peers = []
     
-    for i, peer_socket in enumerate (peer_sockets):
+    for i, peer_socket in enumerate(peer_sockets):
         print(f"DEBUG: Tentando enviar para peer {i}...")
 
         if not send_message(peer_socket, message_dict):
