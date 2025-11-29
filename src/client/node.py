@@ -451,7 +451,7 @@ class AuctionNode:
             print(f"🔍 DEBUG: Ring keys disponíveis: {len(self.ring_keys)}")
             
             # Verificar validade
-            if self.auction_manager.verify_auction_announcement(announcement, self.ring_keys):
+            if self.auction_manager.verify_auction_announcement(announcement):
                 # Adicionar ao manager
                 self.auction_manager.auctions[announcement.auction_id] = announcement
                 self.auction_manager.bids[announcement.auction_id] = []
@@ -494,9 +494,7 @@ class AuctionNode:
             if bid.bid_id in self.processed_bid_ids:
                 return
             
-            ring_keys = self.ring_keys 
-            
-            if self.auction_manager.verify_bid(bid, ring_keys):
+            if self.auction_manager.verify_bid(bid):
                 if bid.auction_id not in self.auction_manager.bids:
                     self.auction_manager.bids[bid.auction_id] = []
                 

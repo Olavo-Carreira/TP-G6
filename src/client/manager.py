@@ -82,12 +82,12 @@ class AuctionManager:
         
         return bid
     
-    def verify_auction_announcement(self, announcement: AuctionAnnouncement, ring_public_keys):
+    def verify_auction_announcement(self, announcement: AuctionAnnouncement, ring_public_keys = None):
         """Verifica um anuncio """
         
         return announcement.verify(ring_public_keys)
     
-    def verify_bid(self, bid: Bid, ring_public_keys):
+    def verify_bid(self, bid: Bid, ring_public_keys = None):
         """Verifica a Bid"""
         
         if bid.auction_id not in self.auctions:
