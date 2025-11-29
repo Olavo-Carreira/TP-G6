@@ -521,6 +521,10 @@ class AuctionNode:
     
     def receive_auction_result(self, message):
         """Receber resultado de leilão"""
+        
+        print(f"🔍 DEBUG: receive_auction_result chamado")
+        print(f"🔍 DEBUG: Message data: {message.get('data', {}).get('auction_id')}")
+    
         try:
             data = message.get('data')
             auction_id = data.get('auction_id')
@@ -879,7 +883,8 @@ class AuctionNode:
             bool: True se sucesso
         """
         try:
-            
+            print(f"🔍 DEBUG: Iniciando finalização do leilão {auction_id}")
+
             server_time = self.get_server_time()
             
             # Verificar se é o seller
@@ -909,9 +914,6 @@ class AuctionNode:
             }
             broadcast_to_peers(self.peer_sockets, message)
             
-            # Minerar bloco
-            self.mine_block()
-            
             if result.has_winner:
                 print_success(f"Vencedor determinado! Valor: {result.winning_amount}€")
                 
@@ -923,14 +925,19 @@ class AuctionNode:
                 self.auction_manager.identity_manager.identity_reveals.setdefault(auction_id, {})
                 self.auction_manager.identity_manager.identity_reveals[auction_id]["seller"] = seller_reveal
                 
+                print(f"🔍 DEBUG: Fazendo broadcast do resultado para {len(self.peer_sockets)} peers")
                 broadcast_to_peers(self.peer_sockets, {
                     'type': 'IDENTITY_REVEAL',
                     'data': seller_reveal.to_dict()
                 })
+                print(f"🔍 DEBUG: Broadcast concluído")
                 
                 print_info(f"Identidade do seller revelada. Aguardando winner ...")
             else:
                 print_info("Leilão fechou sem vencedor (nenhuma bid atingiu reserve price)")
+            
+            # Minerar bloco
+            self.mine_block()
             
             return True
         
