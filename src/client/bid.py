@@ -23,7 +23,7 @@ class Bid:
         self.ring_public_keys = ring_public_keys
         
     @staticmethod
-    def create(auction_id, bidder_private_key, bidder_public_key, bid_amount,ring_public_keys, bid_timestamp = None, timestamp_signature = None, timestamp_hash = None):
+    def create(auction_id, bidder_private_key, bid_amount,ring_public_keys, bid_timestamp = None, timestamp_signature = None, timestamp_hash = None):
         """"Cria uma bid"""
         
         current_time = bid_timestamp if bid_timestamp else time.time()

@@ -19,13 +19,12 @@ class AuctionManager:
         self.blockchain = blockchain  
         self.identity_manager = IdentityRevealManager()
     
-    def create_auction_announcement(self, seller_private_key, seller_public_key,  item_description, reserve_price,
+    def create_auction_announcement(self, seller_private_key,  item_description, reserve_price,
         duration_seconds, ring_public_keys, start_timestamp = None, timestamp_signature = None, timestamp_hash = None):
         """Cria novo anuncio"""
 
         announcement, reserve_nonce = AuctionAnnouncement.create(
             seller_private_key=seller_private_key,
-            seller_public_key=seller_public_key,
             item_description=item_description,
             reserve_price=reserve_price,
             duration_seconds=duration_seconds,
@@ -45,7 +44,7 @@ class AuctionManager:
         
         return announcement, reserve_nonce
     
-    def submit_bid(self, auction_id, bidder_private_key, bidder_public_key, bid_amount, ring_public_keys, bid_timestamp = None, timestamp_signature = None, timestamp_hash = None):
+    def submit_bid(self, auction_id, bidder_private_key,  bid_amount, ring_public_keys, bid_timestamp = None, timestamp_signature = None, timestamp_hash = None):
         """Submete uma bid"""
 
         if auction_id not in self.auctions:
@@ -63,7 +62,6 @@ class AuctionManager:
         bid = Bid.create(
             auction_id = auction_id,
             bidder_private_key = bidder_private_key,
-            bidder_public_key = bidder_public_key,
             bid_amount = bid_amount,
             ring_public_keys = ring_public_keys,
             bid_timestamp = bid_timestamp,

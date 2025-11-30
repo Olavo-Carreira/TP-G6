@@ -145,22 +145,26 @@ class AuctionNode:
             pub_key_bytes = serialize_key(self.public_key, is_private=False)
             pub_key_str = pub_key_bytes.decode('utf-8')
             
+            response = requests.post(f'{self.server_url}/register', json = {
+                'username': self.username,
+                'public_key' : pub_key_str
+            })
+            
+            if response.status_code == 200:
+                logger.info("Registado no servidor central")
+            else:
+                logger.warning("Falha no registo: {response.text}")
+                
             existing_txs = self.blockchain.get_transactions_by_type('USER_REGISTRATION')
             for tx in existing_txs:
                 if tx.get('public_key') == pub_key_str:
                     logger.info(f"Ja registado anteriormente")
                     return
             
-            response = requests.post(f'{self.server_url}/register', json={
-                'username': self.username,
-                'public_key': pub_key_bytes.decode('utf-8')
-            })
-            
             if response.status_code == 200:
                 # Adicionar à blockchain
                 self.blockchain.add_transaction({
                     'type': 'USER_REGISTRATION',
-                    'username': self.username,
                     'public_key': pub_key_bytes.decode('utf-8'),
                     'timestamp': time.time()
                 })
@@ -743,7 +747,6 @@ class AuctionNode:
             
             announcement, reserve_nonce = self.auction_manager.create_auction_announcement(
                 seller_private_key=self.private_key,
-                seller_public_key=self.public_key,
                 item_description=item_description,
                 reserve_price=reserve_price,
                 duration_seconds=duration_minutes * 60,
@@ -829,7 +832,6 @@ class AuctionNode:
             bid = self.auction_manager.submit_bid(
                 auction_id=auction_id,
                 bidder_private_key=self.private_key,
-                bidder_public_key=self.public_key,
                 bid_amount=bid_amount,
                 ring_public_keys=ring_keys_to_use,
                 bid_timestamp = trusted_time_data['timestamp'],
@@ -1059,14 +1061,41 @@ class AuctionNode:
     def _get_username_from_pubkey(self, public_key_str):
         """Encontrar username atraves da chave publica"""
         
-        user_txs = self.blockchain.get_transactions_by_type('USER_REGISTRATION')
-        
-        for tx in user_txs:
-            if tx.get('public_key') == public_key_str:
-                return tx.get('username', 'Unknown')
+        try:
+            response = requests.post(
+                f'{self.server_url}/lookup_username',
+                json = {'public_key': public_key_str},
+                timeout = 2
+            )
             
-        return 'Unknown'
+            if response.status_code == 200:
+                username = response.json().get('username')
+                if username:
+                    return username
+                
+        except Exception as e:
+            logger.debug(f"Error ao obter username: {e}")
+        
+        return f"User-{public_key_str[:16]}..."
     
+    def _get_pubkey_from_username(self, username):
+        try:
+            
+            response = requests.post(
+                f'{self.server_url}/lookup_pubkey',
+                json = {'username':username},
+                timeout = 2
+            )
+            
+            if response.status_code == 200:
+                pubkey_str = response.json().get('public_key')
+                if pubkey_str:
+                    return deserialize_key(pubkey_str.encode(), is_private = False)
+                
+        except Exception as e:
+            logger.debug(f"Erro ao obter pubkey: {e}")
+        
+        return None
     def get_active_peers_count(self):
         """Contar apenas peers com sockets ativos"""
         

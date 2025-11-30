@@ -112,7 +112,7 @@ class Blockchain:
         
         elif tx_type == 'AUCTION_ANNOUNCE':
             data = transaction.get('data', {})
-            required_fields = ['auction_id', 'item_description', 'start_time', 'end_time', 'seller_public_key', 'reserve_price_commitment' , 'ring_signature']
+            required_fields = ['auction_id', 'item_description', 'start_time', 'end_time',  'reserve_price_commitment' , 'ring_signature']
             if not all(field in data for field in required_fields):
                 missing = [field for field in required_fields if field not in data]
                 print(f"Auction invalido - campos em falta {missing}")

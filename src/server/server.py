@@ -50,6 +50,37 @@ def register_user():
         'total_users': len(registered_users)
     })
 
+@app.route('/lookup_username', methods=['POST'])
+def lookup_username():
+    """Lookup username por public key"""
+    data = request.json
+    public_key = data.get('public_key')
+    
+    if not public_key:
+        return jsonify({'error': 'public_key obrigatoria'}), 400
+    
+    for username, pk in registered_users.items():
+        if pk == public_key:
+            return jsonify({'username': username})
+    
+    return jsonify({'username': None}), 404
+
+@app.route('/lookup_pubkey', methods=['POST'])
+def lookup_pubkey():
+    """Lookup pubkey por username"""
+    
+    data = request.json
+    username = data.get('username')
+    
+    if not username:
+        return jsonify({'error': 'username obrigatorio'}), 400
+    
+    public_key = registered_users.get(username)
+    
+    if public_key:
+        return jsonify({'public_key': public_key})
+    
+    return jsonify({'public_key': None}), 404
 
 @app.route('/users/public_keys', methods=['GET'])
 def get_public_keys():
@@ -149,7 +180,7 @@ def verify_timestamp():
     # Procurar no histórico
     record = next(
         (t for t in timestamps 
-         if t['hash'] == data.get('hash') and t['timestamp'] == data.get('timestamp')),
+        if t['hash'] == data.get('hash') and t['timestamp'] == data.get('timestamp')),
         None
     )
     
@@ -168,6 +199,7 @@ def stats():
         'timestamps_issued': len(timestamps),
         'uptime': time.time()  # Simplificado
     })
+    
 
 
 # ========== INICIAR SERVIDOR ==========

@@ -11,11 +11,10 @@ from ring import ring_sign, ring_verify
 
 class AuctionAnnouncement:
     
-    def __init__ (self, auction_id, seller_public_key, item_description, reserve_price_commitment, start_time, 
+    def __init__ (self, auction_id, item_description, reserve_price_commitment, start_time, 
                 end_time, timestamp, ring_signature, timestamp_signature = None, timestamp_hash = None, ring_public_keys = None):
         
         self.auction_id = auction_id
-        self.seller_public_key = seller_public_key
         self.item_description = item_description
         self.reserve_price_commitment = reserve_price_commitment
         self.start_time = start_time
@@ -27,9 +26,11 @@ class AuctionAnnouncement:
         self.ring_public_keys = ring_public_keys
         
     @staticmethod
-    def create(seller_private_key,seller_public_key,item_description,reserve_price,duration_seconds,ring_public_keys, start_timestamp = None, timestamp_signature = None, timestamp_hash = None):
+    def create(seller_private_key,item_description,reserve_price,duration_seconds,ring_public_keys, start_timestamp = None, timestamp_signature = None, timestamp_hash = None):
         """Cria anuncio"""
 
+        
+        seller_public_key = seller_private_key.public_key()
         
         # Generate unique auction ID
         seller_pubkey_bytes = serialize_key(seller_public_key, is_private=False)
@@ -57,7 +58,6 @@ class AuctionAnnouncement:
         # Create announcement (without ring signature first)
         announcement = AuctionAnnouncement(
             auction_id=auction_id,
-            seller_public_key=seller_pubkey_bytes.decode() if isinstance(seller_pubkey_bytes, bytes) else seller_pubkey_bytes,
             item_description=item_description,
             reserve_price_commitment=reserve_commitment,
             start_time=current_time,
@@ -80,7 +80,6 @@ class AuctionAnnouncement:
         
         return {
             'auction_id': self.auction_id,
-            'seller_public_key': self.seller_public_key,
             'item_description': self.item_description,
             'reserve_price_commitment': self.reserve_price_commitment,
             'start_time': self.start_time,
@@ -98,7 +97,6 @@ class AuctionAnnouncement:
         
         return AuctionAnnouncement(
             auction_id = data['auction_id'],
-            seller_public_key = data['seller_public_key'],
             item_description = data['item_description'],
             reserve_price_commitment = data['reserve_price_commitment'],
             start_time = data['start_time'],
@@ -115,7 +113,6 @@ class AuctionAnnouncement:
         
         data = {
             'auction_id': self.auction_id,
-            'seller_public_key': self.seller_public_key,
             'item_description': self.item_description,
             'reserve_price_commitment': self.reserve_price_commitment,
             'start_time': self.start_time,
