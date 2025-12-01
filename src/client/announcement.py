@@ -43,7 +43,10 @@ class AuctionAnnouncement:
         reserve_commitment = private_commitment['commitment']
         reserve_nonce = private_commitment['nonce']
         
-        current_time = start_timestamp if start_timestamp else time.time()
+        if start_timestamp is None or timestamp_signature is None:
+            raise ValueError("Timestamp confiável é obrigatório! Não é possível criar announcement sem timestamp do servidor.")    
+        
+        current_time = start_timestamp
         
         serialized_ring = []
         for pk in ring_public_keys:
