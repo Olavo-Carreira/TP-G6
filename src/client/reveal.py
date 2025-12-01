@@ -1,7 +1,7 @@
 import json
 import time
 from typing import Dict
-from crypto_utils import serialize_key
+from crypto_utils import serialize_key, encrypt_for_dest, deserialize_key
 
 class IdentityReveal:
     
@@ -41,6 +41,23 @@ class IdentityReveal:
             'data': self.to_dict(),
             'timestamp': self.reveal_timestamp
         }
+    
+    def to_encrypted_message(self, dest_pubkey):
+        """Criar mensagem encriptada para destinatario"""
+        
+        if isinstance(dest_pubkey, str):
+            dest_pubkey = deserialize_key(dest_pubkey.encode(), is_private = False)
+        elif isinstance(dest_pubkey, bytes):
+            dest_pubkey = deserialize_key(dest_pubkey, is_private = False)
+        
+        reveal_data = self.to_dict()
+        encrypted_package = encrypt_for_dest(reveal_data, dest_pubkey)
+        
+        encrypted_package['type'] = 'ENCRYPTED_REVEAL'
+        encrypted_package['timestamp'] = self.reveal_timestamp
+        
+        return encrypted_package
+        
         
 class IdentityRevealManager:
     

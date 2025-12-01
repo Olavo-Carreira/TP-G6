@@ -4,18 +4,17 @@ from typing import Dict
 import time
 
 
-from crypto_utils import serialize_key
+from crypto_utils import serialize_key, deserialize_key
 from commitement import create_commitment
 from ring import ring_sign, ring_verify
 
 
 class AuctionAnnouncement:
     
-    def __init__ (self, auction_id, seller_public_key, item_description, reserve_price_commitment, start_time, 
-                end_time, timestamp, ring_signature, timestamp_signature = None, timestamp_hash = None):
+    def __init__ (self, auction_id, item_description, reserve_price_commitment, start_time, 
+                end_time, timestamp, ring_signature, timestamp_signature = None, timestamp_hash = None, ring_public_keys = None):
         
         self.auction_id = auction_id
-        self.seller_public_key = seller_public_key
         self.item_description = item_description
         self.reserve_price_commitment = reserve_price_commitment
         self.start_time = start_time
@@ -24,11 +23,14 @@ class AuctionAnnouncement:
         self.ring_signature = ring_signature
         self.timestamp_signature = timestamp_signature
         self.timestamp_hash = timestamp_hash
+        self.ring_public_keys = ring_public_keys
         
     @staticmethod
-    def create(seller_private_key,seller_public_key,item_description,reserve_price,duration_seconds,ring_public_keys, start_timestamp = None, timestamp_signature = None, timestamp_hash = None):
+    def create(seller_private_key,item_description,reserve_price,duration_seconds,ring_public_keys, start_timestamp = None, timestamp_signature = None, timestamp_hash = None):
         """Cria anuncio"""
 
+        
+        seller_public_key = seller_private_key.public_key()
         
         # Generate unique auction ID
         seller_pubkey_bytes = serialize_key(seller_public_key, is_private=False)
@@ -43,10 +45,19 @@ class AuctionAnnouncement:
         
         current_time = start_timestamp if start_timestamp else time.time()
         
+        serialized_ring = []
+        for pk in ring_public_keys:
+            if isinstance(pk,str):
+                serialized_ring.append(pk)
+            elif isinstance(pk,bytes):
+                serialized_ring.append(pk.decode())
+            else:
+                pk_bytes = serialize_key(pk, is_private = False)
+                serialized_ring.append(pk_bytes.decode())
+        
         # Create announcement (without ring signature first)
         announcement = AuctionAnnouncement(
             auction_id=auction_id,
-            seller_public_key=seller_pubkey_bytes.decode() if isinstance(seller_pubkey_bytes, bytes) else seller_pubkey_bytes,
             item_description=item_description,
             reserve_price_commitment=reserve_commitment,
             start_time=current_time,
@@ -54,8 +65,8 @@ class AuctionAnnouncement:
             timestamp=current_time,
             ring_signature = {},
             timestamp_signature = timestamp_signature,
-            timestamp_hash = timestamp_hash
-        )
+            timestamp_hash = timestamp_hash,
+            ring_public_keys = serialized_ring)
         
         # Add ring signature
         message = announcement.compute_hash()
@@ -69,7 +80,6 @@ class AuctionAnnouncement:
         
         return {
             'auction_id': self.auction_id,
-            'seller_public_key': self.seller_public_key,
             'item_description': self.item_description,
             'reserve_price_commitment': self.reserve_price_commitment,
             'start_time': self.start_time,
@@ -77,7 +87,8 @@ class AuctionAnnouncement:
             'timestamp': self.timestamp,
             'ring_signature': self.ring_signature,
             'timestamp_signature': self.timestamp_signature,
-            'timestamp_hash': self.timestamp_hash
+            'timestamp_hash': self.timestamp_hash,
+            'ring_public_keys': self.ring_public_keys
         }
     
     @staticmethod
@@ -86,7 +97,6 @@ class AuctionAnnouncement:
         
         return AuctionAnnouncement(
             auction_id = data['auction_id'],
-            seller_public_key = data['seller_public_key'],
             item_description = data['item_description'],
             reserve_price_commitment = data['reserve_price_commitment'],
             start_time = data['start_time'],
@@ -94,7 +104,8 @@ class AuctionAnnouncement:
             timestamp = data['timestamp'],
             ring_signature = data['ring_signature'],
             timestamp_signature = data['timestamp_signature'],
-            timestamp_hash = data['timestamp_hash']
+            timestamp_hash = data['timestamp_hash'],
+            ring_public_keys = data['ring_public_keys']
         )
         
     def compute_hash(self):
@@ -102,7 +113,6 @@ class AuctionAnnouncement:
         
         data = {
             'auction_id': self.auction_id,
-            'seller_public_key': self.seller_public_key,
             'item_description': self.item_description,
             'reserve_price_commitment': self.reserve_price_commitment,
             'start_time': self.start_time,
@@ -115,7 +125,17 @@ class AuctionAnnouncement:
     def verify(self, ring_public_keys):
         """Verifica anuncio"""
         
-        print(f"🔍 DEBUG verify: Ring size = {len(ring_public_keys)}")
+        if ring_public_keys is None:
+            if self.ring_public_keys is None:
+                return False
+            ring_public_keys = self.ring_public_keys
+            
+        keys_to_verify = []
+        for key in ring_public_keys:
+            if isinstance(key,str):
+                keys_to_verify.append(key.encode())
+            else:
+                keys_to_verify.append(serialize_key(key, is_private = False))
         
         message = self.compute_hash()
 

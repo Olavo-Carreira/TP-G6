@@ -164,39 +164,3 @@ def broadcast_to_peers(peer_sockets, message_dict):
         
     print(f"Broadcast enviado para {len(peer_sockets)} peers")
 
-
-
-if __name__ == '__main__':
-    import sys
-    
-    if len(sys.argv) < 2:
-        print("Uso: python network.py <porta>")
-        print("Exemplo: python network.py 8000")
-        sys.exit(1)
-    
-    port = int(sys.argv[1])
-    
-    # Handler de mensagens de teste
-    def test_handler(message, sender_socket):
-        print(f"Mensagem recebida: {message}")
-        
-        # Responder
-        response = {'type': 'ACK', 'message': 'Recebi!'}
-        send_message(sender_socket, response)
-    
-    # Iniciar servidor
-    start_p2p_server(port, test_handler)
-    
-    print("\nServidor iniciado. Para testar:")
-    print(f"1. Abrir outro terminal")
-    print(f"2. python")
-    print(f"3. >>> from network import connect_to_peer, send_message")
-    print(f"4. >>> s = connect_to_peer('localhost', {port})")
-    print(f"5. >>> send_message(s, {{'type': 'test', 'data': 'hello'}})")
-    
-    # Manter vivo
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\nEncerrando...")

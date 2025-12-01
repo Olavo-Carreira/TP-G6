@@ -1,10 +1,3 @@
-"""
-Auction Node - Nó P2P para sistema de leilões
-Integra blockchain, networking, auction manager e CLI
-
-✅ FIX: Removido processamento duplicado de transações em receive_new_block
-"""
-
 import socket
 import requests
 import time
@@ -15,7 +8,7 @@ import hashlib
 
 from blockchain import Blockchain
 from network import start_p2p_server, connect_to_peer, send_message, broadcast_to_peers, receive_message
-from crypto_utils import generate_keypair, serialize_key, deserialize_key
+from crypto_utils import generate_keypair, serialize_key, deserialize_key, decryprt_from_dest, encrypt_for_dest
 from manager import AuctionManager
 from announcement import AuctionAnnouncement
 from reveal import IdentityReveal
@@ -23,6 +16,7 @@ from bid import Bid
 from commitement import save_secret_locally, load_secret_for_reveal, create_commitment
 from cli import *
 from status import AuctionStatus
+from block import Block
 
 
 # Configurar logging
@@ -145,22 +139,26 @@ class AuctionNode:
             pub_key_bytes = serialize_key(self.public_key, is_private=False)
             pub_key_str = pub_key_bytes.decode('utf-8')
             
+            response = requests.post(f'{self.server_url}/register', json = {
+                'username': self.username,
+                'public_key' : pub_key_str
+            })
+            
+            if response.status_code == 200:
+                logger.info("Registado no servidor central")
+            else:
+                logger.warning("Falha no registo: {response.text}")
+                
             existing_txs = self.blockchain.get_transactions_by_type('USER_REGISTRATION')
             for tx in existing_txs:
                 if tx.get('public_key') == pub_key_str:
                     logger.info(f"Ja registado anteriormente")
                     return
             
-            response = requests.post(f'{self.server_url}/register', json={
-                'username': self.username,
-                'public_key': pub_key_bytes.decode('utf-8')
-            })
-            
             if response.status_code == 200:
                 # Adicionar à blockchain
                 self.blockchain.add_transaction({
                     'type': 'USER_REGISTRATION',
-                    'username': self.username,
                     'public_key': pub_key_bytes.decode('utf-8'),
                     'timestamp': time.time()
                 })
@@ -345,31 +343,40 @@ class AuctionNode:
             self.peer_sockets.append(sender_socket)
         
         msg_type = message.get('type')
-        print(f"🔍 DEBUG handle_p2p_message: Recebido tipo={msg_type}")
         logger.debug(f"Recebido: {msg_type}")
         
         try:
+            if msg_type == 'ENCRYPTED_REVEAL':
+                self.receive_encrypted_reveal(message)
+                return
+                
             if msg_type == 'REQUEST_BLOCKCHAIN':
                 self.send_blockchain(sender_socket)
+                return
             
             elif msg_type == 'BLOCKCHAIN':
                 self.receive_blockchain(message)
+                return
             
             elif msg_type == 'NEW_BLOCK':
                 self.receive_new_block(message)
+                return
             
             elif msg_type == 'AUCTION_ANNOUNCE':
-                print(f"🔍 DEBUG: Vai chamar receive_auction_announcement")
                 self.receive_auction_announcement(message)
+                return
             
             elif msg_type == 'BID':
                 self.receive_bid(message)
+                return
             
             elif msg_type == 'AUCTION_RESULT':
                 self.receive_auction_result(message)
+                return
             
             elif msg_type == 'IDENTITY_REVEAL':
                 self.receive_identity_reveal(message)
+                return
             
             else:
                 logger.warning(f"Tipo desconhecido: {msg_type}")
@@ -421,7 +428,6 @@ class AuctionNode:
         
         ✅ FIX: Removido processamento duplicado - rebuild_auction_manager já processa tudo
         """
-        from block import Block
         
         block_data = message.get('block')
         new_block = Block.from_dict(block_data)
@@ -430,11 +436,19 @@ class AuctionNode:
             self.blockchain.add_block(new_block)
             logger.info(f"Bloco #{new_block.index} adicionado")
             
+            for tx in new_block.transactions:
+                if tx.get('type') == 'auction_result':
+                    auction_id = tx.get('data', {}).get('auction_id')
+                    if auction_id:
+                        self.check_if_i_won(auction_id)
+            
             # ✅ ATUALIZAR RING após receber bloco (pode ter novos registos!)
             self.update_ring_keys()
             
             # ✅ RECONSTRUIR AUCTION MANAGER (já processa todas as transações)
             self.rebuild_auction_manager_from_blockchain()
+            
+            
         
         except Exception as e:
             logger.warning(f"Bloco rejeitado: {e}")
@@ -451,7 +465,7 @@ class AuctionNode:
             print(f"🔍 DEBUG: Ring keys disponíveis: {len(self.ring_keys)}")
             
             # Verificar validade
-            if self.auction_manager.verify_auction_announcement(announcement, self.ring_keys):
+            if self.auction_manager.verify_auction_announcement(announcement):
                 # Adicionar ao manager
                 self.auction_manager.auctions[announcement.auction_id] = announcement
                 self.auction_manager.bids[announcement.auction_id] = []
@@ -494,9 +508,7 @@ class AuctionNode:
             if bid.bid_id in self.processed_bid_ids:
                 return
             
-            ring_keys = self.ring_keys 
-            
-            if self.auction_manager.verify_bid(bid, ring_keys):
+            if self.auction_manager.verify_bid(bid):
                 if bid.auction_id not in self.auction_manager.bids:
                     self.auction_manager.bids[bid.auction_id] = []
                 
@@ -523,6 +535,10 @@ class AuctionNode:
     
     def receive_auction_result(self, message):
         """Receber resultado de leilão"""
+        
+        print(f"🔍 DEBUG: receive_auction_result chamado")
+        print(f"🔍 DEBUG: Message data: {message.get('data', {}).get('auction_id')}")
+    
         try:
             data = message.get('data')
             auction_id = data.get('auction_id')
@@ -630,6 +646,66 @@ class AuctionNode:
             logger.error(f"Erro ao processar reveal: {e}")
             import traceback
             traceback.print_exc()
+    
+    def receive_encrypted_reveal(self, message):
+        """Receber receal e tentar desencriptar"""
+        
+        try:
+            required = ['encrypted_key', 'encrypted_data', 'tag', 'nonce']
+            if not all(field in message for field in required):
+                logger.debug("Encrypted_Reveal com campos em falta")
+                return
+            
+            decrypted = decryprt_from_dest(message, self.private_key)
+            
+            if decrypted is None:
+                logger.debug("Encrypted_Reveal n era para mim")
+                return
+            
+            logger.info("Recebi revelacao de identidade privada")
+            
+            reveal = IdentityReveal.from_dict(decrypted)
+            auction_id = reveal.auction_id
+            
+            if auction_id not in self.auction_manager.identity_manager.identity_reveals:
+                self.auction_manager.identity_manager.identity_reveals[auction_id] = {}
+                
+            if reveal.role == "seller":
+                self.auction_manager.identity_manager.identity_reveals[auction_id]["seller"] = reveal
+                print_success(f"Seller revelou identidade")
+                logger.info(f"Auction: {auction_id}")
+                
+            elif reveal.role == "winner":
+                self.auction_manager.identity_manager.identity_reveals[auction_id]["winner"] = reveal
+                print_success(f"Winner revelou identidade")
+                logger.info(f"Auction: {auction_id}")
+
+            if self.auction_manager.identity_manager.are_identities_revealed(auction_id):
+                self._show_complete_auction_info(auction_id)
+        
+        except Exception as e:
+            logger.error(f"Erro ao processar reveal encriptado: {e}")
+    
+    def _show_complete_auction_info(self, auction_id):
+        """Mostrar informacao completa quando as identidade estao reveladas"""
+        
+        seller_reveal = self.auction_manager.identity_manager.get_seller_identity(auction_id)
+        winner_reveal = self.auction_manager.identity_manager.get_winner_identity(auction_id)
+        
+        if not seller_reveal or not winner_reveal:
+            return
+        
+        seller_username = self._get_username_from_pubkey(seller_reveal.public_key)
+        winner_username = self._get_username_from_pubkey(winner_reveal.public_key)
+        
+        print("\n" + "="*70)
+        print_success("🎉 LEILÃO CONCLUÍDO - AMBAS IDENTIDADES REVELADAS")
+        print("="*70)
+        print(f"   🏛️  Auction ID: {auction_id}")
+        print(f"   👤 Seller: {seller_username}")
+        print(f"   🏆 Winner: {winner_username}")
+        print("="*70)
+        print("="*70 + "\n")
     
     def process_transaction(self, tx):
         """
@@ -741,7 +817,6 @@ class AuctionNode:
             
             announcement, reserve_nonce = self.auction_manager.create_auction_announcement(
                 seller_private_key=self.private_key,
-                seller_public_key=self.public_key,
                 item_description=item_description,
                 reserve_price=reserve_price,
                 duration_seconds=duration_minutes * 60,
@@ -827,7 +902,6 @@ class AuctionNode:
             bid = self.auction_manager.submit_bid(
                 auction_id=auction_id,
                 bidder_private_key=self.private_key,
-                bidder_public_key=self.public_key,
                 bid_amount=bid_amount,
                 ring_public_keys=ring_keys_to_use,
                 bid_timestamp = trusted_time_data['timestamp'],
@@ -839,6 +913,7 @@ class AuctionNode:
             self.my_secrets[f"bid_{bid.bid_id}"] = {
                 'bid_nonce': bid.bid_nonce,
                 'bid_value': bid_amount,
+                'bid_commitment': bid.bid_commitment,
                 'auction_id': auction_id,
                 'type': 'bidder'
             }
@@ -848,6 +923,7 @@ class AuctionNode:
                 'bid_id': bid.bid_id,
                 'bid_nonce': bid.bid_nonce,
                 'bid_value': bid_amount,
+                'bid_commitment': bid.bid_commitment,
                 'auction_id': auction_id,
                 'type': 'bidder'
             })
@@ -870,6 +946,88 @@ class AuctionNode:
             print_error(f"Erro ao submeter bid: {e}")
             return False
     
+    def check_if_i_won(self, auction_id):
+        """Verificar se ganhei um leilao"""
+        
+        try:
+            result_data = None
+            
+            for block in reversed(self.blockchain.chain):
+                for tx in block.transactions:
+                    if tx.get('type') == 'auction_result':
+                        data = tx.get('data', {})
+                        if data.get('auction_id') == auction_id:
+                            result_data = data
+                            break
+                if result_data:
+                    break
+            
+            if not result_data or not result_data.get('has_winner'):
+                return False
+            
+            winner_commitment = result_data.get('winner_bid_commitment')
+            
+            for secret_key, secret_data in self.my_secrets.items():
+                if (secret_data.get('type') == 'bidder' and
+                    secret_data.get('auction_id') == auction_id and
+                    secret_data.get('bid_commitment') == winner_commitment):
+                    
+                    print("\n" + "="*70)
+                    print_success("🏆🏆🏆 PARABÉNS! GANHASTE O LEILÃO! 🏆🏆🏆")
+                    print("="*70)
+                    print(f"   🏛️  Auction ID: {auction_id}")
+                    print(f"   💰 Tua bid vencedora: {secret_data['bid_value']}€")
+                    print(f"   🔒 Commitment: {winner_commitment[:16]}...")
+                    print("="*70)
+                    print("   📨 A revelar tua identidade para o seller...")
+                    print("="*70 + "\n")
+                    
+                    self._reveal_as_winner(auction_id, winner_commitment)
+                    
+                    return True
+                return False
+        except Exception as e:
+            logger.error(f"Erro ao verificar vencedor: {e}")
+            return False
+        
+    def _reveal_as_winner(self, auction_id, winning_commitment):
+        """Revelar identidade como winner"""
+        
+        try:
+            print_progress("Revelando a tua identidade", 1)
+            print("🔍 DEBUG: Criando reveal...")
+            reveal = self.auction_manager.identity_manager.reveal_winner_identity(
+                auction_id = auction_id,
+                winner_public_key = self.public_key,
+                winning_bid_commitment = winning_commitment
+            )
+            print("✅ DEBUG: Reveal criado")
+            print(f"\n🔍 DEBUG: Ring keys disponíveis: {len(self.ring_keys)}")
+            
+            sent_count = 0
+            
+            for i, ring_key in enumerate(self.ring_keys):
+                print(f"🔍 DEBUG: Tentando encriptar para chave {i+1}/{len(self.ring_keys)}...")
+                try:
+                    encrypted_msg = reveal.to_encrypted_message(ring_key)
+                    print(f"✅ DEBUG: Encriptação {i+1} bem-sucedida")
+                    
+                    broadcast_to_peers(self.peer_sockets, encrypted_msg)
+                    sent_count += 1
+                
+                except Exception as e:
+                    print(f"❌ DEBUG: Encriptação {i+1} FALHOU: {e}")
+                    continue
+            
+            print()
+            print_success(f"✅ Identidade revelada!")
+            print_info(f"   📤 Mensagens encriptadas enviadas: {sent_count}")
+            print_info(f"   🔐 Apenas o seller conseguirá desencriptar e ver quem és")
+            print()
+        
+        except Exception as e:
+            logger.error(f"Erro ao revelar como winner: {e}")
+        
     def close_and_finalize_auction(self, auction_id):
         """
         Fechar e finalizar leilão (apenas seller)
@@ -881,65 +1039,86 @@ class AuctionNode:
             bool: True se sucesso
         """
         try:
+            if auction_id not in self.my_secrets:
+                return
+            
+            secret = self.my_secrets[auction_id]
+            if secret.get('type') != 'seller':
+                return
+            
+            auction = self.auction_manager.get_auction(auction_id)
+            if not auction:
+                return
             
             server_time = self.get_server_time()
             
-            # Verificar se é o seller
-            if auction_id not in self.my_secrets or self.my_secrets[auction_id]['type'] != 'seller':
-                print_error("Apenas o seller pode finalizar o leilão!")
-                return False
+            if server_time < auction.end_time:
+                print_warning(f"Leilao ainda esta ativo! Termina em {format_timestamp(auction.end_time)}")
+                if not get_confirmation("Fechar mesmo assim?"):
+                    return
+
+            print_progress("Fechando bidding...", 1)
             
-            # Fechar bidding
-            if not self.auction_manager.close_bidding(auction_id, current_time=server_time):
-                print_error("Não foi possível fechar o leilão (ainda não terminou?)")
-                return False
+            self.auction_manager.close_bidding(auction_id, current_time=server_time)
             
-            print_progress("Determinando vencedor...", 1)
+            print_progress("Determinando vencedor....", 1)
             
-            # Finalizar com reserve price
-            secret = self.my_secrets[auction_id]
             result = self.auction_manager.finalize_auction(
-                auction_id=auction_id,
-                reserve_price=secret['reserve_price'],
-                reserve_nonce=secret['reserve_nonce']
+                auction_id = auction_id,
+                reserve_price = secret['reserve_price'],
+                reserve_nonce = secret['reserve_nonce']
             )
             
-            # Broadcast resultado
-            message = {
-                'type': 'AUCTION_RESULT',
-                'data': result.to_dict()
-            }
-            broadcast_to_peers(self.peer_sockets, message)
-            
-            # Minerar bloco
             self.mine_block()
+            print()
             
             if result.has_winner:
-                print_success(f"Vencedor determinado! Valor: {result.winning_amount}€")
-                
-                seller_reveal = self.auction_manager.seller_reveal_identity(
+                print_info(f"Winner bid commitment: {result.winner_bid_commitment[:16]}")
+                print_info(f"Winning amount: {result.winning_amount}€")
+                print_info(f"Total valid bids: {result.total_valid_bids}")
+                print()
+            
+                print_progress("Revelando a tua identidade", 1)
+            
+                reveal = self.auction_manager.identity_manager.reveal_seller_identity(
                     auction_id = auction_id,
-                    seller_public_key = self.public_key
+                    seller_public_key = self.public_key 
                 )
                 
-                self.auction_manager.identity_manager.identity_reveals.setdefault(auction_id, {})
-                self.auction_manager.identity_manager.identity_reveals[auction_id]["seller"] = seller_reveal
+                sent_count = 0
+                failed_count = 0
                 
-                broadcast_to_peers(self.peer_sockets, {
-                    'type': 'IDENTITY_REVEAL',
-                    'data': seller_reveal.to_dict()
-                })
-                
-                print_info(f"Identidade do seller revelada. Aguardando winner ...")
-            else:
-                print_info("Leilão fechou sem vencedor (nenhuma bid atingiu reserve price)")
+                for i, ring_key in enumerate(self.ring_keys):
+                    print(f"🔍 DEBUG: Tentando encriptar para chave {i+1}/{len(self.ring_keys)}...")
+                    try:
+                        
+                        encrypted_msg = reveal.to_encrypted_message(ring_key)
+                        print(f"✅ DEBUG: Encriptação {i+1} bem-sucedida")
+                        broadcast_to_peers(self.peer_sockets, encrypted_msg)
+                        sent_count += 1
+                    
+                    except Exception as e:
+                        print(f"❌ DEBUG: Encriptação {i+1} FALHOU: {e}")
+                        failed_count += 1
+                        continue
             
-            return True
+                print()
+                print_success(f"✅ Identidade revelada!")
+                print_info(f"   📤 Mensagens encriptadas enviadas: {sent_count}")
+                print_info(f"   🔐 Apenas o winner conseguirá desencriptar e ver quem és")
+                print_info(f"   ⏳ Aguardando revelação do winner...")
+                
+                if failed_count > 0:
+                    logger.debug(f"   ⚠️  {failed_count} chaves do ring falharam encriptação")
+            
+            else:
+                print_warning("❌ Sem vencedor")
+                print_info(f"   Reserve price: {secret['reserve_price']}€")
+                print_info(f"   Nenhuma bid atingiu o reserve price")
         
         except Exception as e:
-            print_error(f"Erro ao finalizar leilão: {e}")
-            return False
-    
+            print_error(f"Erro ao fechar leilao: {e}")
+            
     def get_active_auctions(self):
         """Obter lista de leilões ativos"""
         
@@ -1054,14 +1233,41 @@ class AuctionNode:
     def _get_username_from_pubkey(self, public_key_str):
         """Encontrar username atraves da chave publica"""
         
-        user_txs = self.blockchain.get_transactions_by_type('USER_REGISTRATION')
-        
-        for tx in user_txs:
-            if tx.get('public_key') == public_key_str:
-                return tx.get('username', 'Unknown')
+        try:
+            response = requests.post(
+                f'{self.server_url}/lookup_username',
+                json = {'public_key': public_key_str},
+                timeout = 2
+            )
             
-        return 'Unknown'
+            if response.status_code == 200:
+                username = response.json().get('username')
+                if username:
+                    return username
+                
+        except Exception as e:
+            logger.debug(f"Error ao obter username: {e}")
+        
+        return f"User-{public_key_str[:16]}..."
     
+    def _get_pubkey_from_username(self, username):
+        try:
+            
+            response = requests.post(
+                f'{self.server_url}/lookup_pubkey',
+                json = {'username':username},
+                timeout = 2
+            )
+            
+            if response.status_code == 200:
+                pubkey_str = response.json().get('public_key')
+                if pubkey_str:
+                    return deserialize_key(pubkey_str.encode(), is_private = False)
+                
+        except Exception as e:
+            logger.debug(f"Erro ao obter pubkey: {e}")
+        
+        return None
     def get_active_peers_count(self):
         """Contar apenas peers com sockets ativos"""
         
@@ -1170,8 +1376,6 @@ def run_cli(node):
 
 
 # ========== CLI FUNCTIONS ====================
-
-
 
 def cli_create_auction(node):
     """CLI: Criar leilão"""
