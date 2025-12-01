@@ -320,7 +320,7 @@ class AuctionNode:
     def discover_and_connect_peers(self):
         """Descobrir e conectar a peers"""
         peers = self.get_peers_from_server()
-        logger.info(f"Descobertos {len(peers)} peers")
+        logger.info(f"Descobridos {len(peers)} peers")
         
         for peer in peers:
             peer_socket = connect_to_peer(peer['ip'], peer['port'])
@@ -1393,15 +1393,14 @@ if __name__ == '__main__':
     import sys
     
     if len(sys.argv) < 2:
-        print("Uso: python node.py <username> [porta]")
-        print("Exemplo: python node.py Alice 8000")
+        print("Uso: python node.py <username>")
+        print("Exemplo: python node.py Alice")
         sys.exit(1)
     
     username = sys.argv[1]
-    port = int(sys.argv[2]) if len(sys.argv) > 2 else None
     
-    # Criar e iniciar node
-    node = AuctionNode(username, p2p_port=port)
+    # TIAGO
+    node = AuctionNode(username, p2p_port=None)
     node.start()
     
     # Executar CLI
