@@ -82,20 +82,3 @@ class Block:
         block.hash = data['hash']
         return block
     
-if __name__ == '__main__':
-    block = Block(
-        index=1,
-        previous_hash='0' * 64,
-        timestamp=time.time(),
-        transactions=[
-            {'type': 'test', 'data': 'hello world'}
-        ]
-    )
-    
-    print(f"Hash antes mining: {block.hash}")
-    
-    # Minerar (difficulty 2 = precisa começar com "00")
-    block.mine_block(difficulty=2)
-    
-    print(f"Hash depois mining: {block.hash}")
-    print(f"Nonce encontrado: {block.nonce}")

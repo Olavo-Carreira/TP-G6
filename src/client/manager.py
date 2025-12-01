@@ -217,10 +217,6 @@ class AuctionManager:
             auction_id = auction_id,
             seller_public_key = seller_public_key
         )
-        
-        if self.blockchain:
-            tx = reveal.to_blockchain_transaction()
-            self.blockchain.add_transaction(tx)
             
         return reveal
     
@@ -238,11 +234,7 @@ class AuctionManager:
             winner_public_key = winner_public_key,
             winning_bid_commitment = winning_bid_commitment
         )
-        
-        if self.blockchain:
-            tx = reveal.to_blockchain_transaction()
-            self.blockchain.add_transaction(tx)
-        
+
         return reveal
             
 

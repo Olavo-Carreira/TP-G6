@@ -75,11 +75,3 @@ def deserialize_commitment(commitment_json):
     
     return json.loads(commitment_json)
 
-"""def prepare_reveal(secret_data):
-    
-    return {
-        "auction_id": secret_data["auction_id"],
-        "commitment": secret_data["commitment"],
-        "bid_value": secret_data["bid_value"],
-        "nonce": secret_data["nonce"],
-    }"""

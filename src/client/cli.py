@@ -262,37 +262,3 @@ def print_divider(char="─", width=60):
     print(char * width)
 
 
-# ========== TESTE ==========
-if __name__ == '__main__':
-    # Testar todas as funções
-    print_logo()
-    
-    print_header("Teste de UI", 50)
-    
-    print_success("Operação bem sucedida!")
-    print_error("Algo correu mal!")
-    print_warning("Atenção a isto!")
-    print_info("Informação útil")
-    
-    print_menu("Menu Principal", [
-        "📢 Criar Leilão",
-        "💰 Fazer Bid",
-        "📋 Ver Leilões",
-        "❌ Sair"
-    ])
-    
-    print_box("Informações", [
-        "Nome: Alice",
-        "Peers: 3",
-        "Blocos: 42"
-    ])
-    
-    print_table(
-        ["ID", "Item", "Status"],
-        [
-            ["abc123", "Laptop", "ACTIVE"],
-            ["def456", "Mouse", "COMPLETED"]
-        ]
-    )
-    
-    print("\n✨ Todos os componentes UI testados!")
