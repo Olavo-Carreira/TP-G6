@@ -15,7 +15,7 @@ class AuctionResult:
         self.has_winner = winner_bid_commitment is not None
     
     def to_dict(self):
-
+        """Convert to dictionary"""
         return {
             'auction_id': self.auction_id,
             'winner_bid_id': self.winner_bid_id,
@@ -28,7 +28,7 @@ class AuctionResult:
         }
     
     def to_blockchain_transaction(self):
-
+        """Convert to blockchain transaction"""
         return {
             'type': 'auction_result',
             'data': self.to_dict(),
@@ -41,25 +41,24 @@ class WinnerDetermination:
     @staticmethod
     def determine_winner(auction_id, reserve_price, all_bids: List):
         """
-        Determinar vencedor do leilão
-        
+        Determine auction winner
         """
         
-        # Filtrar bids válidas (acima do reserve price)
+        # Filter valid bids (above reserve price)
         valid_bids = [
             bid for bid in all_bids
             if bid.bid_value >= reserve_price
         ]
         
         if not valid_bids:
-            # Sem vencedor
+            # No winner
             winner_bid_id = None
             winner_commitment = None
             winning_amount = None
         else:
             valid_bids_sorted = sorted(
                 valid_bids,
-                key=lambda b: (-b.bid_value, b.timestamp)  # - para desc, sem - para asc
+                key=lambda b: (-b.bid_value, b.timestamp)  # - for desc, without - for asc
             )
             
             winner_bid = valid_bids_sorted[0]
@@ -70,18 +69,18 @@ class WinnerDetermination:
             ]
             
             if len(tied_bids) > 1:
-                print(f"\n⚠️  EMPATE DETECTADO: {len(tied_bids)} bids com valor {winner_bid.bid_value}€")
-                print(f"   Winner escolhido por timestamp (earliest): {winner_bid.timestamp}")
+                print(f"\n⚠️  TIE DETECTED: {len(tied_bids)} bids with value {winner_bid.bid_value}€")
+                print(f"   Winner chosen by timestamp (earliest): {winner_bid.timestamp}")
                 for i, bid in enumerate(sorted(tied_bids, key=lambda b: b.timestamp)):
                     print(f"   #{i+1}: Bid {bid.bid_id[:8]}... @ timestamp {bid.timestamp}")
                 print()
             
-            # Extrair dados do winner
+            # Extract winner data
             winner_bid_id = winner_bid.bid_id
             winner_commitment = winner_bid.bid_commitment
             winning_amount = winner_bid.bid_value
         
-        # Criar resultado
+        # Create result
         result = AuctionResult(
             auction_id=auction_id,
             winner_bid_id=winner_bid_id,

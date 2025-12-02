@@ -3,18 +3,18 @@ import json
 import time
 
 class Block:
-    """Classe que representa um bloco na blockchain"""
+    """Class that represents a block in the blockchain"""
     
     def __init__ (self, index, previous_hash, timestamp, transactions, nonce = 0):
         self.index = index
         self.previous_hash = previous_hash
         self.timestamp = timestamp
-        self.transactions = transactions #lista de dicts
+        self.transactions = transactions # list of dicts
         self.nonce = nonce
         self.hash = self.calculate_hash()
         
     def calculate_hash(self):
-        """Calcula SHA256 do bloco"""
+        """Calculate SHA256 of the block"""
         
         block_string = json.dumps({
             'index': self.index,
@@ -26,10 +26,10 @@ class Block:
         
         return hashlib.sha256(block_string.encode()).hexdigest()
     
-    #TODO secalhar depois meter algo mais giro em vez de ser comecar por 0
+    # TODO maybe later add something cooler instead of starting with 0
     
     def mine_block(self, difficulty):
-        """Proof-of-Work: encontrar o nonce que faça hash começar com 0 vezes a difficuldade"""
+        """Proof-of-Work: find the nonce that makes hash start with 0 times the difficulty"""
         
         target = '0' * difficulty
         
@@ -40,24 +40,24 @@ class Block:
         print(f"Block mined: {self.hash}")
     
     def verify_integrity(self):
-        """Verificar se hash está correto"""
+        """Verify if hash is correct"""
         calculated = self.calculate_hash()
         return calculated == self.hash
 
     def save_to_file(self, filepath):
-        """Guardar bloco em ficheiro JSON"""
+        """Save block to JSON file"""
         with open(filepath, 'w') as f:
                 json.dump(self.to_dict(), f, indent=2)
     
     @staticmethod
     def load_from_file(filepath):
-        """Carregar bloco de ficheiro"""
+        """Load block from file"""
         with open(filepath, 'r') as f:
             data = json.load(f)
         return Block.from_dict(data)
 
     def to_dict(self):
-        """Serializar para Json"""
+        """Serialize to JSON"""
         
         return {
             'index': self.index,
@@ -70,7 +70,7 @@ class Block:
     
     @staticmethod
     def from_dict(data):
-        """Deserializar de Json"""
+        """Deserialize from JSON"""
         
         block = Block(
             data['index'],
@@ -81,4 +81,4 @@ class Block:
         )
         block.hash = data['hash']
         return block
-    
+

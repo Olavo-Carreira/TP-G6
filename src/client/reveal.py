@@ -8,13 +8,13 @@ class IdentityReveal:
     def __init__ (self, auction_id, role, public_key, bid_commitment, reveal_timestamp):
         
         self.auction_id = auction_id
-        self.role = role # Winner ou seller
+        self.role = role # Winner or seller
         self.public_key = public_key
         self.bid_commitment = bid_commitment  
         self.reveal_timestamp = reveal_timestamp
     
     def to_dict(self):
-
+        """Convert to dictionary"""
         return {
             'auction_id': self.auction_id,
             'role': self.role,
@@ -25,7 +25,7 @@ class IdentityReveal:
     
     @staticmethod
     def from_dict(data: Dict):
-
+        """Create from dictionary"""
         return IdentityReveal(
             auction_id=data['auction_id'],
             role=data['role'],
@@ -35,7 +35,7 @@ class IdentityReveal:
         )
     
     def to_blockchain_transaction(self):
-
+        """Convert to blockchain transaction"""
         return {
             'type': 'identity_reveal',
             'data': self.to_dict(),
@@ -43,7 +43,7 @@ class IdentityReveal:
         }
     
     def to_encrypted_message(self, dest_pubkey):
-        """Criar mensagem encriptada para destinatario"""
+        """Create encrypted message for recipient"""
         
         if isinstance(dest_pubkey, str):
             dest_pubkey = deserialize_key(dest_pubkey.encode(), is_private = False)
@@ -60,12 +60,14 @@ class IdentityReveal:
         
         
 class IdentityRevealManager:
+    """Manages identity reveals for auctions"""
     
     def __init__ (self):
         self.identity_reveals: Dict[str, Dict[str, IdentityReveal]] = {}
         # auction_id -> {seller : IdentityReveal, winner : IdentityReveal}
         
     def reveal_seller_identity(self, auction_id, seller_public_key):
+        """Reveal seller identity"""
         
         pubkey_bytes = serialize_key(seller_public_key, is_private = False)
         
@@ -85,6 +87,7 @@ class IdentityRevealManager:
         return reveal
     
     def reveal_winner_identity(self, auction_id, winner_public_key, winning_bid_commitment):
+        """Reveal winner identity"""
         
         pubkey_bytes = serialize_key(winner_public_key, is_private = False)
         
@@ -104,14 +107,14 @@ class IdentityRevealManager:
         return reveal
     
     def get_seller_identity(self, auction_id):
-        
+        """Get seller identity reveal"""
         return self.identity_reveals.get(auction_id, {}).get("seller")
     
     def get_winner_identity(self, auction_id):
-        
+        """Get winner identity reveal"""
         return self.identity_reveals.get(auction_id, {}).get("winner")
 
     def are_identities_revealed(self,auction_id):
-        
+        """Check if both identities are revealed"""
         reveals = self.identity_reveals.get(auction_id, {})
         return "seller" in reveals and "winner" in reveals

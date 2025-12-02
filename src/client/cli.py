@@ -1,15 +1,14 @@
 import time
+import sys
 from typing import List, Any
 
 def print_header(title, width=60):
-    """Imprimir cabeçalho bonito"""
     print("\n" + "="*width)
     print(f"{title:^{width}}")
     print("="*width)
 
 
 def print_box(title, lines, width=60):
-    """Imprimir caixa com título e linhas"""
     print("\n╔" + "═"*(width-2) + "╗")
     print(f"║ {title:^{width-4}} ║")
     print("╠" + "═"*(width-2) + "╣")
@@ -27,14 +26,6 @@ def print_box(title, lines, width=60):
 
 
 def print_menu(title, options, width=60):
-    """
-    Imprimir menu com opções numeradas
-    
-    Args:
-        title: Título do menu
-        options: Lista de strings com opções
-        width: Largura da caixa
-    """
     print("\n╔" + "═"*(width-2) + "╗")
     print(f"║ {title:^{width-4}} ║")
     print("╠" + "═"*(width-2) + "╣")
@@ -57,33 +48,22 @@ def print_menu(title, options, width=60):
 
 
 def print_success(message):
-    """Imprimir mensagem de sucesso"""
     print(f"✅ {message}")
 
 
 def print_error(message):
-    """Imprimir mensagem de erro"""
     print(f"❌ {message}")
 
 
 def print_warning(message):
-    """Imprimir mensagem de aviso"""
     print(f"⚠️  {message}")
 
 
 def print_info(message):
-    """Imprimir mensagem informativa"""
     print(f"ℹ️  {message}")
 
 
 def print_auction_details(auction, status=None):
-    """
-    Imprimir detalhes de um leilão de forma formatada
-    
-    Args:
-        auction: Objeto AuctionAnnouncement
-        status: Status do leilão (opcional)
-    """
     print("\n" + "-"*60)
     print(f"🏛️  Auction ID: {auction.auction_id}")
     print(f"📦 Item: {auction.item_description}")
@@ -95,67 +75,42 @@ def print_auction_details(auction, status=None):
 
 
 def print_bid_details(bid):
-    """
-    Imprimir detalhes de uma bid de forma formatada
-    
-    Args:
-        bid: Objeto Bid
-    """
     print(f"  💰 Bid ID: {bid.bid_id}")
     print(f"     Amount: {bid.bid_value:.2f}€")
     print(f"     Time: {time.strftime('%H:%M:%S', time.localtime(bid.timestamp))}")
 
 
 def print_table(headers: List[str], rows: List[List[Any]], widths: List[int] = None):
-    """
-    Imprimir tabela formatada
-    
-    Args:
-        headers: Lista de cabeçalhos
-        rows: Lista de linhas (cada linha é uma lista de valores)
-        widths: Lista de larguras das colunas (opcional)
-    """
     if not widths:
         widths = [max(len(str(row[i])) for row in [headers] + rows) + 2 for i in range(len(headers))]
     
-    # Linha superior
+    # Top line
     print("\n┌" + "┬".join("─"*w for w in widths) + "┐")
     
-    # Cabeçalhos
+    # Headers
     print("│" + "│".join(f"{headers[i]:^{widths[i]}}" for i in range(len(headers))) + "│")
     
-    # Linha separadora
+    # Separator line
     print("├" + "┼".join("─"*w for w in widths) + "┤")
     
-    # Linhas de dados
+    # Data rows
     for row in rows:
         print("│" + "│".join(f"{str(row[i]):<{widths[i]}}" for i in range(len(row))) + "│")
     
-    # Linha inferior
+    # Bottom line
     print("└" + "┴".join("─"*w for w in widths) + "┘")
 
 
 def get_input(prompt, input_type=str, validator=None):
-    """
-    Obter input do utilizador com validação
-    
-    Args:
-        prompt: Mensagem a mostrar
-        input_type: Tipo esperado (str, int, float)
-        validator: Função de validação opcional
-        
-    Returns:
-        Valor validado
-    """
     while True:
         try:
             value = input(f"➤ {prompt}: ")
             
-            # Converter para tipo correto
+            # Convert to correct type
             if input_type != str:
                 value = input_type(value)
             
-            # Validar se fornecido validador
+            # Validate if validator provided
             if validator and not validator(value):
                 print_error("Wrong value, please try again")
                 continue
@@ -170,15 +125,6 @@ def get_input(prompt, input_type=str, validator=None):
 
 
 def get_confirmation(prompt):
-    """
-    Obter confirmação sim/não
-    
-    Args:
-        prompt: Mensagem a mostrar
-        
-    Returns:
-        bool: True se sim, False se não
-    """
     while True:
         response = input(f"➤ {prompt} (y/n): ").lower().strip()
         if response in ['s', 'sim', 'y', 'yes']:
@@ -190,14 +136,6 @@ def get_confirmation(prompt):
 
 
 def print_progress(message, duration=2):
-    """
-    Mostrar mensagem de progresso com animação
-    
-    Args:
-        message: Mensagem a mostrar
-        duration: Duração em segundos
-    """
-    import sys
     
     frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     end_time = time.time() + duration
@@ -220,19 +158,13 @@ def clear_screen():
 
 
 def press_enter_to_continue():
-    """Esperar que o utilizador pressione Enter"""
-    input("\n[Pressiona Enter para continuar...]")
+    """Wait for the user to press Enter"""
+    input("\n[Press Enter to continue...]")
 
 
 def print_node_status(node):
-    """
-    Imprimir status do node de forma bonita
-    
-    Args:
-        node: Objeto AuctionNode
-    """
     active_auctions = node.get_active_auctions()
-    print(f"\nDEBUG: Leilões ativos retornados: {len(active_auctions)}")
+    print(f"\nDEBUG: Active auctions returned: {len(active_auctions)}")
     for auction in active_auctions:
         print(f"  - {auction.auction_id}: {auction.item_description}")
         

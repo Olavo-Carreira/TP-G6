@@ -2,8 +2,6 @@ import json
 import hashlib
 from typing import Dict
 import time
-
-
 from crypto_utils import serialize_key, deserialize_key
 from commitement import create_commitment
 from ring import ring_sign, ring_verify
@@ -27,9 +25,8 @@ class AuctionAnnouncement:
         
     @staticmethod
     def create(seller_private_key,item_description,reserve_price,duration_seconds,ring_public_keys, start_timestamp = None, timestamp_signature = None, timestamp_hash = None):
-        """Cria anuncio"""
+        """Create announcement"""
 
-        
         seller_public_key = seller_private_key.public_key()
         
         # Generate unique auction ID
@@ -44,7 +41,7 @@ class AuctionAnnouncement:
         reserve_nonce = private_commitment['nonce']
         
         if start_timestamp is None or timestamp_signature is None:
-            raise ValueError("Timestamp confiável é obrigatório! Não é possível criar announcement sem timestamp do servidor.")    
+            raise ValueError("Trusted timestamp is required! Cannot create announcement without server timestamp.")    
         
         current_time = start_timestamp
         
@@ -79,7 +76,7 @@ class AuctionAnnouncement:
         return announcement, reserve_nonce
     
     def to_dict(self):
-        """Converter para dicionario"""
+        """Convert to dictionary"""
         
         return {
             'auction_id': self.auction_id,
@@ -96,7 +93,7 @@ class AuctionAnnouncement:
     
     @staticmethod
     def from_dict(data: Dict):
-        """Criar do dicionario"""
+        """Create from dictionary"""
         
         return AuctionAnnouncement(
             auction_id = data['auction_id'],
@@ -112,7 +109,7 @@ class AuctionAnnouncement:
         )
         
     def compute_hash(self):
-        """Hash do announcement"""
+        """Hash of the announcement"""
         
         data = {
             'auction_id': self.auction_id,
@@ -126,7 +123,7 @@ class AuctionAnnouncement:
         return hashlib.sha256(json.dumps(data, sort_keys = True).encode()).hexdigest()
     
     def verify(self, ring_public_keys):
-        """Verifica anuncio"""
+        """Verify announcement"""
         
         if ring_public_keys is None:
             if self.ring_public_keys is None:
@@ -143,14 +140,14 @@ class AuctionAnnouncement:
         message = self.compute_hash()
 
         ring_valid = ring_verify(message, self.ring_signature, ring_public_keys)
-        print(f"🔍 DEBUG verify: Ring signature válida? {ring_valid}")
+        print(f"🔍 DEBUG verify: Ring signature valid? {ring_valid}")
     
         if not ring_valid:
             return False
 
-        
-        if self.timestamp > time.time() + 300: # Tolerancia
-            print(f"🔍 DEBUG verify: Timestamp muito no futuro!")
+        # Check timestamp not too far in the future
+        if self.timestamp > time.time() + 300: # Tolerance
+            print(f"🔍 DEBUG verify: Timestamp too far in the future!")
             return False
         
         if self.end_time <= self.start_time:
@@ -168,4 +165,3 @@ class AuctionAnnouncement:
             'data': data_dict,
             'timestamp': timestamp
         }
-        

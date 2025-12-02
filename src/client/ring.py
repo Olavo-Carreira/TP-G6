@@ -4,21 +4,21 @@ from crypto_utils import sign_data, verify_signature, serialize_key, deserialize
 
 
 def ring_sign(message, signer_private_key, public_keys_list):
-    """Criar ring signature"""
+    """Create ring signature"""
     
     if isinstance(message, str):
         message = message.encode()
     
-    # Hash da mensagem
+    # Hash the message
     message_hash = hashlib.sha256(message).digest()
     
-    # Serializar chave pública do assinante
+    # Serialize signer's public key
     signer_pubkey_bytes = serialize_key(
         signer_private_key.public_key(), 
         is_private=False
     )
     
-    # Encontrar índice do assinante no ring
+    # Find signer's index in the ring
     signer_index = None
     for i, pub_key_bytes in enumerate(public_keys_list):
         if isinstance(pub_key_bytes, str):
@@ -28,12 +28,12 @@ def ring_sign(message, signer_private_key, public_keys_list):
             break
     
     if signer_index is None:
-        raise ValueError("Chave pública do assinante não encontrada no ring!")
+        raise ValueError("Signer's public key not found in ring!")
     
-    # Criar assinatura real
+    # Create real signature
     real_signature = sign_data(message, signer_private_key)
     
-    # Criar lista de todas as assinaturas (real + preenchimento)
+    # Create list of all signatures (real + padding)
     ring_size = len(public_keys_list)
     signatures = []
     
@@ -53,7 +53,7 @@ def ring_sign(message, signer_private_key, public_keys_list):
                 'public_key': pub_key_bytes.decode() if isinstance(pub_key_bytes, bytes) else pub_key_bytes
             })
     
-    # Embaralhar para esconder posição real
+    # Shuffle to hide real position
     random.shuffle(signatures)
     
     key_image = hashlib.sha256(signer_pubkey_bytes + message_hash).hexdigest()
@@ -69,7 +69,7 @@ def ring_sign(message, signer_private_key, public_keys_list):
 
 
 def ring_verify(message, ring_signature, public_keys_list):
-    """Verificar ring signature"""
+    """Verify ring signature"""
     
     if isinstance(message, str):
         message = message.encode()
@@ -91,19 +91,19 @@ def ring_verify(message, ring_signature, public_keys_list):
             sig_bytes = bytes.fromhex(sig_hex)
             pub_key = deserialize_key(pub_key_str.encode(), is_private=False)
             
-            # Tentar verificar como assinatura RSA
+            # Try to verify as RSA signature
             if verify_signature(message, sig_bytes, pub_key):
-                # Encontrou assinatura válida!
+                # Found valid signature!
                 return True
         
         except Exception:
             continue
     
-    # Nenhuma assinatura válida encontrada
+    # No valid signature found
     return False
 
 
 def get_ring_from_blockchain(blockchain):
-    """Obter ring (todas as chaves públicas) da blockchain"""
+    """Get ring (all public keys) from blockchain"""
     return blockchain.get_all_user_keys()
 

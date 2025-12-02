@@ -9,10 +9,10 @@ import json
 import os
 
 def generate_keypair():
-    """Gerar par de chaves RSA"""
+    """Generate RSA keypair"""
     
     private_key = rsa.generate_private_key(
-        public_exponent = 65537, #Padrao RSA numero primo
+        public_exponent = 65537, # RSA standard prime number
         key_size = 2048,
         backend = default_backend()
     )
@@ -21,13 +21,13 @@ def generate_keypair():
     return private_key, public_key
 
 def serialize_key(key, is_private = False):
-    """Converter chave para bytes (para envio)"""
+    """Convert key to bytes (for sending)"""
     
     if is_private:
         return key.private_bytes(
             encoding = serialization.Encoding.PEM,
             format = serialization.PrivateFormat.PKCS8,
-            encryption_algorithm = serialization.NoEncryption() #sem pass
+            encryption_algorithm = serialization.NoEncryption() # no password
         )
     else:
         return key.public_bytes(
@@ -36,7 +36,7 @@ def serialize_key(key, is_private = False):
         )
 
 def deserialize_key(key_bytes, is_private=False):
-    """Converter bytes de volta para chave"""
+    """Convert bytes back to key"""
     
     if is_private:
         return serialization.load_pem_private_key(
@@ -51,14 +51,14 @@ def deserialize_key(key_bytes, is_private=False):
         )
 
 def hash_data(data):
-    """SHA 256 de dados"""
+    """SHA256 of data"""
     
     if isinstance(data, str):
         data = data.encode()
     return hashlib.sha256(data).hexdigest()
     
 def sign_data(data, private_key):
-    """Assinar dados com chave privada"""
+    """Sign data with private key"""
 
     if isinstance(data,str):
         data = data.encode()
@@ -75,7 +75,7 @@ def sign_data(data, private_key):
     return signature
 
 def verify_signature(data, signature, public_key):
-    """Verificar assinatura com chave pública"""
+    """Verify signature with public key"""
     
     if isinstance(data, str):
         data = data.encode()
@@ -95,7 +95,7 @@ def verify_signature(data, signature, public_key):
         return False
     
 def encrypt_for_dest(message, dest_pubkey):
-    """Encriptar mensagem -> AES para dados q é sem limites e RSA para chave AES"""
+    """Encrypt message -> AES for data (no limits) and RSA for AES key"""
     
     if isinstance(message, dict):
         message = json.dumps(message)
@@ -133,7 +133,7 @@ def encrypt_for_dest(message, dest_pubkey):
     }
 
 def decryprt_from_dest(encrypted_message, prvkey):
-    """Desencriptar mensagem recebida"""
+    """Decrypt received message"""
     
     try:
         

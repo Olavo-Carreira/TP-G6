@@ -1,7 +1,3 @@
-"""
-Blockchain - Cadeia de blocos para registar transações de leilões
-"""
-
 from block import Block
 from crypto_utils import deserialize_key, verify_signature
 import time
@@ -10,39 +6,39 @@ import hashlib
 
 
 class Blockchain:
-    """Representa a blockchain do sistema de leilões"""
+    """Represents the auction system blockchain"""
     
     def __init__(self, server_public_key = None):
         self.chain = [self.create_genesis_block()]
         self.difficulty = 2
         self.pending_transactions = []
-        self.seen_transaction_hashes = set()  # Prevenir duplicações
+        self.seen_transaction_hashes = set()  # Prevent duplicates
         self.server_public_key = server_public_key
         
     def create_genesis_block(self):
-        """Criar primeiro bloco da blockchain"""
+        """Create first block of the blockchain"""
         return Block(0, "0", 0, [{"type": "genesis"}])
     
     def get_last_block(self):
-        """Obter último bloco da blockchain"""
+        """Get last block of the blockchain"""
         return self.chain[-1]
     
     def get_last_block_hash(self):
-        """Obter hash do último bloco"""
+        """Get hash of the last block"""
         return self.get_last_block().hash
     
     def get_block(self, index):
-        """Buscar um bloco específico"""
+        """Fetch a specific block"""
         if index < 0 or index >= len(self.chain):
-            raise IndexError(f"Bloco {index} não existe")
+            raise IndexError(f"Block {index} does not exist")
         
         return self.chain[index]
     
     def verify_trusted_timestamp(self, transaction):
-        """Verificar assinatura do timestamp do server"""
+        """Verify server timestamp signature"""
         
         if not self.server_public_key:
-            print("Sem chave do server - nao e possivel verificar timestamp")
+            print("No server key - cannot verify timestamp")
             return False
         
         tx_type = transaction.get('type')
@@ -64,7 +60,7 @@ class Blockchain:
             sig_bytes = bytes.fromhex(timestamp_sig)
             is_valid = verify_signature(message, sig_bytes, self.server_public_key)
             if not is_valid:
-                print(f"Timestamp com assinatura invalida")
+                print(f"Timestamp with invalid signature")
                 return False
         except:
             return False
@@ -73,40 +69,40 @@ class Blockchain:
         
     def validate_transaction(self, transaction):
         """
-        ✅ NOVO: Validar transação antes de adicionar
+        ✅ NEW: Validate transaction before adding
         
         Args:
-            transaction: Dicionário com a transação
+            transaction: Dictionary with the transaction
             
         Returns:
-            bool: True se válida, False caso contrário
+            bool: True if valid, False otherwise
         """
         
         print(f"DEBUG validate_transaction: type={transaction.get('type')}, timestamp={transaction.get('timestamp')}")
     
-        # Verificar estrutura básica
+        # Verify basic structure
         if not isinstance(transaction, dict):
             return False
         
         if 'type' not in transaction or 'timestamp' not in transaction:
-            print("⚠️  Falta type ou timestamp")
+            print("⚠️  Missing type or timestamp")
             return False
 
         tx_hash = hashlib.sha256(json.dumps(transaction, sort_keys=True).encode()).hexdigest()
         
         if tx_hash in self.seen_transaction_hashes:
-            print(f"⚠️  Transação duplicada rejeitada: {tx_hash[:16]}...")
+            print(f"⚠️  Duplicate transaction rejected: {tx_hash[:16]}...")
             return False
         
-        # Verificar timestamp (não pode ser muito no futuro)
+        # Verify timestamp (cannot be too far in the future)
         current_time = time.time()
-        if transaction['timestamp'] > current_time + 300:  # 5 min tolerância
-            print(f"⚠️  Timestamp inválido: muito no futuro")
+        if transaction['timestamp'] > current_time + 300:  # 5 min tolerance
+            print(f"⚠️  Invalid timestamp: too far in the future")
             return False
         
         tx_type = transaction.get('type')
         
-        # Validações específicas por tipo
+        # Specific validations by type
         if tx_type == 'USER_REGISTRATION':
             if 'public_key' not in transaction:
                 return False
@@ -116,10 +112,10 @@ class Blockchain:
             required_fields = ['auction_id', 'item_description', 'start_time', 'end_time',  'reserve_price_commitment' , 'ring_signature', 'timestamp_signature', 'timestamp_hash']
             if not all(field in data for field in required_fields):
                 missing = [field for field in required_fields if field not in data]
-                print(f"Auction invalido - campos em falta {missing}")
+                print(f"Invalid auction - missing fields {missing}")
                 return False
             if not self.verify_trusted_timestamp(transaction):
-                print(f"Auction Announce rejeitado - timestamp invalido")
+                print(f"Auction Announce rejected - invalid timestamp")
                 return False
         
         elif tx_type == 'BID':
@@ -127,57 +123,57 @@ class Blockchain:
             required_fields = ['bid_id', 'auction_id', 'bid_value', 'ring_signature', 'timestamp_signature', 'timestamp_hash']
             if not all(field in data for field in required_fields):
                 missing = [field for field in required_fields if field not in data]
-                print(f"Auction invalido - campos em falta {missing}")
+                print(f"Invalid auction - missing fields {missing}")
                 return False
             
             if not self.verify_trusted_timestamp(transaction):
-                print(f"BID rejeitada - timestamp inválido")
+                print(f"BID rejected - invalid timestamp")
                 return False
         
-        # Transação válida - adicionar ao set de vistas
+        # Valid transaction - add to seen set
         self.seen_transaction_hashes.add(tx_hash)
         
         return True
     
     def add_transaction(self, transaction):
         """
-        Adicionar transação às pendentes
+        Add transaction to pending
         
-        ✅ CORRIGIDO: Agora valida antes de adicionar
+        ✅ FIXED: Now validates before adding
         
         Args:
-            transaction: Transação para adicionar
+            transaction: Transaction to add
         """
         if self.validate_transaction(transaction):
             self.pending_transactions.append(transaction)
             return True
         else:
-            print(f"⚠️  Transação inválida rejeitada: {transaction.get('type', 'unknown')}")
+            print(f"⚠️  Invalid transaction rejected: {transaction.get('type', 'unknown')}")
             return False
         
     def add_block(self, block):
         """
-        Adicionar bloco à blockchain
+        Add block to blockchain
         
         Args:
-            block: Bloco para adicionar
+            block: Block to add
         """
         last_block = self.get_last_block()
         
-        # Debug detalhado
+        # Detailed debug
         if block.previous_hash != last_block.hash:
             import logging
             logger = logging.getLogger(__name__)
-            logger.error(f"❌ CONFLITO DE HASH:")
-            logger.error(f"   Bloco recebido #{block.index}")
-            logger.error(f"   Previous hash esperado: {block.previous_hash[:16]}...")
-            logger.error(f"   Último bloco local: #{last_block.index}")
-            logger.error(f"   Hash do último bloco: {last_block.hash[:16]}...")
+            logger.error(f"❌ HASH CONFLICT:")
+            logger.error(f"   Received block #{block.index}")
+            logger.error(f"   Expected previous hash: {block.previous_hash[:16]}...")
+            logger.error(f"   Local last block: #{last_block.index}")
+            logger.error(f"   Last block hash: {last_block.hash[:16]}...")
             logger.error(f"   Chain length: {len(self.chain)}")
-            raise ValueError("Previous hash não bate certo")
+            raise ValueError("Previous hash does not match")
         
         if not block.verify_integrity():
-            raise ValueError("Hash do bloco inválido")
+            raise ValueError("Invalid block hash")
         
         for tx in block.transactions:
             tx_hash = hashlib.sha256(json.dumps(tx, sort_keys=True).encode()).hexdigest()
@@ -187,10 +183,10 @@ class Blockchain:
         
     def mine_pending_transactions(self):
         """
-        Minerar bloco com as transações pendentes
+        Mine block with pending transactions
         
         Returns:
-            Block: Bloco minerado ou None se não há transações
+            Block: Mined block or None if no transactions
         """
         if not self.pending_transactions:
             return None
@@ -210,19 +206,19 @@ class Blockchain:
     
     def replace_chain(self, new_chain):
         """
-        Substituir chain se a nova for maior e válida (consenso)
+        Replace chain if new one is longer and valid (consensus)
         
         Args:
-            new_chain: Nova chain para comparar
+            new_chain: New chain to compare
             
         Returns:
-            bool: True se substituiu, False caso contrário
+            bool: True if replaced, False otherwise
         """
         if len(new_chain) > len(self.chain):
             if self.is_chain_valid(new_chain):
                 self.chain = new_chain
                 
-                # Reconstruir set de transações vistas
+                # Rebuild seen transactions set
                 import json
                 import hashlib
                 self.seen_transaction_hashes.clear()
@@ -235,18 +231,18 @@ class Blockchain:
         return False
     
     def is_valid(self):
-        """Verificar integridade da chain local"""
+        """Verify local chain integrity"""
         return self.is_chain_valid(self.chain)
     
     def is_chain_valid(self, chain):
         """
-        Validar uma chain
+        Validate a chain
         
         Args:
-            chain: Lista de blocos para validar
+            chain: List of blocks to validate
             
         Returns:
-            bool: True se válida, False caso contrário
+            bool: True if valid, False otherwise
         """
         for i in range(1, len(chain)):
             current = chain[i]
@@ -261,7 +257,7 @@ class Blockchain:
         return True
             
     def save_to_disk(self, filepath='blockchain.json'):
-        """Guardar chain completa em disco"""
+        """Save complete chain to disk"""
         import json
     
         chain_data = [block.to_dict() for block in self.chain]
@@ -270,7 +266,7 @@ class Blockchain:
             json.dump(chain_data, f, indent=2)
 
     def load_from_disk(self, filepath='blockchain.json'):
-        """Carregar chain de disco"""
+        """Load chain from disk"""
         import json
         from block import Block
         
@@ -280,7 +276,7 @@ class Blockchain:
             
             self.chain = [Block.from_dict(block_dict) for block_dict in chain_data]
             
-            # Reconstruir set de transações vistas
+            # Rebuild seen transactions set
             import hashlib
             self.seen_transaction_hashes.clear()
             for block in self.chain:
@@ -289,18 +285,18 @@ class Blockchain:
                     self.seen_transaction_hashes.add(tx_hash)
             
         except FileNotFoundError:
-            print("Ficheiro não existe, a usar genesis block")
+            print("File does not exist, using genesis block")
             self.chain = [self.create_genesis_block()]
     
     def get_transactions_by_type(self, t_type):
         """
-        Buscar transações por tipo
+        Search transactions by type
         
         Args:
-            t_type: Tipo de transação ('BID', 'AUCTION_ANNOUNCE', etc)
+            t_type: Transaction type ('BID', 'AUCTION_ANNOUNCE', etc)
             
         Returns:
-            list: Lista de transações do tipo especificado
+            list: List of transactions of specified type
         """
         results = []
         for block in self.chain:
@@ -311,17 +307,17 @@ class Blockchain:
     
     def get_all_user_keys(self):
         """
-        Extrair chaves públicas de users registados
+        Extract public keys from registered users
         
-        ✅ CORRIGIDO: Agora busca também em pending_transactions!
+        ✅ FIXED: Now also searches in pending_transactions!
         
         Returns:
-            list: Lista de chaves públicas
+            list: List of public keys
         """
-        # Buscar em blocos minerados
+        # Search in mined blocks
         user_reg_txs = self.get_transactions_by_type('USER_REGISTRATION')
         
-        # ✅ TAMBÉM buscar em pending transactions!
+        # ✅ ALSO search in pending transactions!
         for tx in self.pending_transactions:
             if tx.get('type') == 'USER_REGISTRATION':
                 user_reg_txs.append(tx)

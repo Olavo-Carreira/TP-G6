@@ -2,7 +2,6 @@ import json
 import hashlib
 import time
 from typing import Dict
-
 from commitement import create_commitment, verify_commitment
 from ring import ring_sign, ring_verify
 from crypto_utils import deserialize_key, serialize_key
@@ -24,10 +23,10 @@ class Bid:
         
     @staticmethod
     def create(auction_id, bidder_private_key, bid_amount,ring_public_keys, bid_timestamp = None, timestamp_signature = None, timestamp_hash = None):
-        """"Cria uma bid"""
+        """"Create a bid"""
         
         if bid_timestamp is None or timestamp_signature is None:
-            raise ValueError("Timestamp confiável é obrigatório! Não é possível criar bid sem timestamp do servidor.")
+            raise ValueError("Trusted timestamp is required! Cannot create bid without server timestamp.")
         
         current_time = bid_timestamp
         
@@ -69,7 +68,7 @@ class Bid:
         return bid
         
     def to_dict(self):
-        """Serealizar para dicionario"""
+        """Serialize to dictionary"""
         
         return {
             'bid_id': self.bid_id,
@@ -86,7 +85,7 @@ class Bid:
     
     @staticmethod
     def from_dict(data: Dict):
-        """Criar bid do dicionario"""
+        """Create bid from dictionary"""
         
         return Bid (
             bid_id = data['bid_id'],
@@ -102,7 +101,7 @@ class Bid:
         )
         
     def compute_hash(self):
-        """Hash da bid"""
+        """Hash of the bid"""
         
         data = {
             'bid_id': self.bid_id,
@@ -114,7 +113,7 @@ class Bid:
         return hashlib.sha256(json.dumps(data, sort_keys = True).encode()).hexdigest()
     
     def verify(self, auction_start_time, auction_end_time, ring_public_keys = None):
-        """Verifica a bid"""
+        """Verify the bid"""
         
         if self.timestamp < auction_start_time or self.timestamp > auction_end_time:
             return False
@@ -142,11 +141,10 @@ class Bid:
         return True
     
     def to_blockchain_transaction(self):
-        """Formato de blockchain"""
+        """Blockchain format"""
         
         return {
             'type': 'BID',
             'data': self.to_dict(),
             'timestamp': self.timestamp
         }
-        

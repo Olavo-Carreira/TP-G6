@@ -3,7 +3,7 @@ import hashlib
 import json
 
 def create_commitment(auction_id, value):
-    """Criar commitment (hash de bid + nonce)"""
+    """Create commitment (hash of bid + nonce)"""
     
     nonce_bytes = os.urandom(32)
     nonce_hex = nonce_bytes.hex()
@@ -27,7 +27,7 @@ def create_commitment(auction_id, value):
     return public_commitment, private_commitment
 
 def verify_commitment(commitment_hash, value, nonce, auction_id):
-    """Verificar que commitment corresponde aos dados revelados"""
+    """Verify that commitment matches revealed data"""
     
     data_str = f"{auction_id}:{value}:{nonce}"
     data_bytes = data_str.encode("utf-8")
@@ -36,7 +36,7 @@ def verify_commitment(commitment_hash, value, nonce, auction_id):
     return recomputed_hash == commitment_hash   
 
 def save_secret_locally(secret_data, filename="my_secrets.json"):
-    """Guardar os dados secretos"""
+    """Save secret data"""
     
     try:
         with open(filename, 'r') as f:
@@ -50,7 +50,7 @@ def save_secret_locally(secret_data, filename="my_secrets.json"):
         json.dump(all_bids, f, indent=2)
 
 def load_secret_for_reveal(auction_id, filename="my_secrets.json"):
-    """Carregar os dados secretos"""
+    """Load secret data"""
     
     try:
         with open(filename, 'r') as f:
@@ -65,13 +65,13 @@ def load_secret_for_reveal(auction_id, filename="my_secrets.json"):
     return None
         
 def serialize_commitment(commitment_data):
-    """Converter commitment para JSON (para guardar/enviar)"""
+    """Convert commitment to JSON (to save/send)"""
     
     return json.dumps(commitment_data)
 
 
 def deserialize_commitment(commitment_json):
-    """Converter JSON de volta para dict"""
+    """Convert JSON back to dict"""
     
     return json.loads(commitment_json)
 

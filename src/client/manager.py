@@ -21,7 +21,7 @@ class AuctionManager:
     
     def create_auction_announcement(self, seller_private_key,  item_description, reserve_price,
         duration_seconds, ring_public_keys, start_timestamp = None, timestamp_signature = None, timestamp_hash = None):
-        """Cria novo anuncio"""
+        """Create new announcement"""
 
         announcement, reserve_nonce = AuctionAnnouncement.create(
             seller_private_key=seller_private_key,
@@ -45,7 +45,7 @@ class AuctionManager:
         return announcement, reserve_nonce
     
     def submit_bid(self, auction_id, bidder_private_key,  bid_amount, ring_public_keys, bid_timestamp = None, timestamp_signature = None, timestamp_hash = None):
-        """Submete uma bid"""
+        """Submit a bid"""
 
         if auction_id not in self.auctions:
             raise ValueError(f"Auction {auction_id} not found")
@@ -81,12 +81,12 @@ class AuctionManager:
         return bid
     
     def verify_auction_announcement(self, announcement: AuctionAnnouncement, ring_public_keys = None):
-        """Verifica um anuncio """
+        """Verify an announcement"""
         
         return announcement.verify(ring_public_keys)
     
     def verify_bid(self, bid: Bid, ring_public_keys = None):
-        """Verifica a Bid"""
+        """Verify a bid"""
         
         if bid.auction_id not in self.auctions:
             return False
@@ -100,14 +100,15 @@ class AuctionManager:
         )
     
     def get_auction(self, auction_id):
-
+        """Get auction by ID"""
         return self.auctions.get(auction_id)
     
     def get_auction_bids(self, auction_id):
-
+        """Get bids for auction"""
         return self.bids.get(auction_id, [])
     
     def get_auction_status(self, auction_id, current_time = None):
+        """Get auction status"""
         
         if auction_id not in self.auctions:
             return None
@@ -139,7 +140,7 @@ class AuctionManager:
         return self.auction_status.get(auction_id)
     
     def close_bidding(self, auction_id, current_time = None):
-        """Fecha o periodo de bidding"""
+        """Close bidding period"""
         
         if auction_id not in self.auctions:
             return False
@@ -156,10 +157,11 @@ class AuctionManager:
         return True
     
     def get_all_auctions(self):
-
+        """Get all auctions"""
         return list(self.auctions.values())
     
     def get_active_auctions(self, current_time = None):
+        """Get active auctions"""
         
         if current_time is None:
             current_time = time.time()
@@ -170,7 +172,7 @@ class AuctionManager:
         ]
     
     def finalize_auction(self, auction_id, reserve_price,reserve_nonce):
-        """Determina vencedor e finalize o leilao"""
+        """Determine winner and finalize auction"""
         
         if auction_id not in self.auctions:
             raise ValueError(f"Auction {auction_id} not found")
@@ -205,7 +207,7 @@ class AuctionManager:
         return result
     
     def seller_reveal_identity(self, auction_id, seller_public_key):
-        """Seller revela identidade verdadeira apos leilao"""
+        """Seller reveals true identity after auction"""
         
         if auction_id not in self.auctions:
             raise ValueError(f"Auction {auction_id} not found")
@@ -221,7 +223,7 @@ class AuctionManager:
         return reveal
     
     def winner_reveal_identity(self, auction_id, winner_public_key, winning_bid_commitment):
-        """Winner revela identidade"""
+        """Winner reveals identity"""
         
         if auction_id not in self.auctions:
             raise ValueError(f"Auction {auction_id} not found")
@@ -236,5 +238,5 @@ class AuctionManager:
         )
 
         return reveal
-            
+
 
