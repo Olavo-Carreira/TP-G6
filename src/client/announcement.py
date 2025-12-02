@@ -2,7 +2,7 @@ import json
 import hashlib
 from typing import Dict
 import time
-from crypto_utils import serialize_key, deserialize_key
+from crypto_utils import serialize_key, deserialize_key, verify_signature
 from commitement import create_commitment
 from ring import ring_sign, ring_verify
 
@@ -122,7 +122,7 @@ class AuctionAnnouncement:
         
         return hashlib.sha256(json.dumps(data, sort_keys = True).encode()).hexdigest()
     
-    def verify(self, ring_public_keys):
+    def verify(self, ring_public_keys, server_public_key=None):
         """Verify announcement"""
         
         if ring_public_keys is None:
@@ -145,6 +145,18 @@ class AuctionAnnouncement:
         if not ring_valid:
             return False
 
+        # TIAGO
+        if server_public_key and self.timestamp_signature:
+            timestamp_message = f"{self.timestamp_hash}:{self.timestamp}"
+            try:
+                sig_bytes = bytes.fromhex(self.timestamp_signature)
+                if not verify_signature(timestamp_message, sig_bytes, server_public_key):
+                    print(f"🔍 DEBUG verify: Invalid server timestamp signature!")
+                    return False
+            except Exception as e:
+                print(f"🔍 DEBUG verify: Error verifying timestamp: {e}")
+                return False
+        
         # Check timestamp not too far in the future
         if self.timestamp > time.time() + 300: # Tolerance
             print(f"🔍 DEBUG verify: Timestamp too far in the future!")

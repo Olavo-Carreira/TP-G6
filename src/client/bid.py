@@ -4,7 +4,7 @@ import time
 from typing import Dict
 from commitement import create_commitment, verify_commitment
 from ring import ring_sign, ring_verify
-from crypto_utils import deserialize_key, serialize_key
+from crypto_utils import deserialize_key, serialize_key, verify_signature
 
 
 class Bid:
@@ -112,7 +112,7 @@ class Bid:
         
         return hashlib.sha256(json.dumps(data, sort_keys = True).encode()).hexdigest()
     
-    def verify(self, auction_start_time, auction_end_time, ring_public_keys = None):
+    def verify(self, auction_start_time, auction_end_time, ring_public_keys = None, server_public_key = None):
         """Verify the bid"""
         
         if self.timestamp < auction_start_time or self.timestamp > auction_end_time:
@@ -134,6 +134,16 @@ class Bid:
         
         if not ring_verify(message, self.ring_signature, ring_public_keys):
             return False
+        
+        # TIAGO
+        if server_public_key and self.timestamp_signature:
+            timestamp_message = f"{self.timestamp_hash}:{self.timestamp}"
+            try:
+                sig_bytes = bytes.fromhex(self.timestamp_signature)
+                if not verify_signature(timestamp_message, sig_bytes, server_public_key):
+                    return False
+            except Exception as e:
+                return False
         
         if not verify_commitment(self.bid_commitment, self.bid_value, self.bid_nonce, self.auction_id):
             return False

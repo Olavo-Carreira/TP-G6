@@ -83,7 +83,8 @@ class AuctionManager:
     def verify_auction_announcement(self, announcement: AuctionAnnouncement, ring_public_keys = None):
         """Verify an announcement"""
         
-        return announcement.verify(ring_public_keys)
+        server_pubkey = self.blockchain.server_public_key if self.blockchain else None
+        return announcement.verify(ring_public_keys, server_public_key=server_pubkey)
     
     def verify_bid(self, bid: Bid, ring_public_keys = None):
         """Verify a bid"""
@@ -92,11 +93,13 @@ class AuctionManager:
             return False
         
         auction = self.auctions[bid.auction_id]
+        server_pubkey = self.blockchain.server_public_key if self.blockchain else None
         
         return bid.verify(
             auction_start_time=auction.start_time,
             auction_end_time=auction.end_time,
-            ring_public_keys=ring_public_keys
+            ring_public_keys=ring_public_keys,
+            server_public_key=server_pubkey
         )
     
     def get_auction(self, auction_id):
