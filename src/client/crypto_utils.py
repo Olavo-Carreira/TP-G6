@@ -154,7 +154,7 @@ def decryprt_from_dest(encrypted_message, prvkey):
         cipher = Cipher(
             algorithms.AES(aes_key),
             modes.GCM(nonce,tag),
-            backend=default_backend
+            backend=default_backend()
         )
         
         decryptor = cipher.decryptor()

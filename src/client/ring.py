@@ -1,5 +1,7 @@
 import hashlib
 import random
+import os
+
 from crypto_utils import sign_data, verify_signature, serialize_key, deserialize_key
 
 
@@ -44,9 +46,7 @@ def ring_sign(message, signer_private_key, public_keys_list):
                 'public_key': pub_key_bytes.decode() if isinstance(pub_key_bytes, bytes) else pub_key_bytes
             })
         else:
-            dummy_sig = hashlib.sha256(
-                pub_key_bytes + message_hash + str(i).encode()
-            ).digest() * 8  
+            dummy_sig = os.urandom(256)
             
             signatures.append({
                 'signature': dummy_sig.hex(),

@@ -14,6 +14,7 @@ class Blockchain:
         self.pending_transactions = []
         self.seen_transaction_hashes = set()  # Prevent duplicates
         self.server_public_key = server_public_key
+        self.used_key_images = set()
         
     def create_genesis_block(self):
         """Create first block of the blockchain"""
@@ -69,13 +70,7 @@ class Blockchain:
         
     def validate_transaction(self, transaction):
         """
-        ✅ NEW: Validate transaction before adding
-        
-        Args:
-            transaction: Dictionary with the transaction
-            
-        Returns:
-            bool: True if valid, False otherwise
+        Validate transaction before adding
         """
         
         print(f"DEBUG validate_transaction: type={transaction.get('type')}, timestamp={transaction.get('timestamp')}")
@@ -101,6 +96,15 @@ class Blockchain:
             return False
         
         tx_type = transaction.get('type')
+        
+        if tx_type in ['AUCTION_ANNOUNCE', 'BID']:
+            data = transaction.get('data', {})
+            ring_sig = data.get('ring_signature', {})
+            key_image = ring_sig.get('key_image')
+            
+            if key_image and key_image in self.used_key_images:
+                print(f"⚠️  Key image duplicado (transação já processada): {key_image[:16]}...")
+                return False
         
         # Specific validations by type
         if tx_type == 'USER_REGISTRATION':
@@ -132,6 +136,13 @@ class Blockchain:
         
         # Valid transaction - add to seen set
         self.seen_transaction_hashes.add(tx_hash)
+        
+        if tx_type in ['AUCTION_ANNOUNCE', 'BID']:
+            data = transaction.get('data', {})
+            ring_sig = data.get('ring_signature', {})
+            key_image = ring_sig.get('key_image')
+            if key_image:
+                self.used_key_images.add(key_image)
         
         return True
     
@@ -207,12 +218,6 @@ class Blockchain:
     def replace_chain(self, new_chain):
         """
         Replace chain if new one is longer and valid (consensus)
-        
-        Args:
-            new_chain: New chain to compare
-            
-        Returns:
-            bool: True if replaced, False otherwise
         """
         if len(new_chain) > len(self.chain):
             if self.is_chain_valid(new_chain):
@@ -226,7 +231,13 @@ class Blockchain:
                     for tx in block.transactions:
                         tx_hash = hashlib.sha256(json.dumps(tx, sort_keys=True).encode()).hexdigest()
                         self.seen_transaction_hashes.add(tx_hash)
-                
+                        if tx.get('type') in ['AUCTION_ANNOUNCE', 'BID']:
+                            data = tx.get('data', {})
+                            ring_sig = data.get('ring_signature', {})
+                            key_image = ring_sig.get('key_image')
+                            if key_image:
+                                self.used_key_images.add(key_image)
+                    
                 return True
         return False
     
@@ -277,13 +288,21 @@ class Blockchain:
             self.chain = [Block.from_dict(block_dict) for block_dict in chain_data]
             
             # Rebuild seen transactions set
-            import hashlib
             self.seen_transaction_hashes.clear()
             for block in self.chain:
                 for tx in block.transactions:
                     tx_hash = hashlib.sha256(json.dumps(tx, sort_keys=True).encode()).hexdigest()
                     self.seen_transaction_hashes.add(tx_hash)
-            
+            self.used_key_images.clear()
+            for block in self.chain:
+                for tx in block.transactions:
+                    if tx.get('type') in ['AUCTION_ANNOUNCE', 'BID']:
+                        data = tx.get('data', {})
+                        ring_sig = data.get('ring_signature', {})
+                        key_image = ring_sig.get('key_image')
+                        if key_image:
+                            self.used_key_images.add(key_image)
+                            
         except FileNotFoundError:
             print("File does not exist, using genesis block")
             self.chain = [self.create_genesis_block()]

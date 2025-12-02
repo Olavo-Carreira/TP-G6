@@ -372,9 +372,8 @@ class AuctionNode:
                 self.receive_auction_result(message)
                 return
             
-            elif msg_type == 'IDENTITY_REVEAL':
-                self.receive_identity_reveal(message)
-                return
+            # Note: IDENTITY_REVEAL removed - only ENCRYPTED_REVEAL should be used
+            # to maintain selective identity disclosure
             
             else:
                 logger.warning(f"Unknown type: {msg_type}")
@@ -569,81 +568,14 @@ class AuctionNode:
                     if my_commitment == winning_commitment:
                         print_success("You won the auction")
                         
-                        winner_reveal = self.auction_manager.winner_reveal_identity(
-                            auction_id = auction_id,
-                            winner_public_key = self.public_key,
-                            winning_bid_commitment = winning_commitment
-                        )
-                        
-                        broadcast_to_peers(self.peer_sockets, {
-                            'type': 'IDENTITY_REVEAL',
-                            'data': winner_reveal.to_dict()
-                        })
-                        
-                        print_info("Identity revealed. Waiting for seller...")
+                        # ✅ FIX: Use encrypted reveal instead of plain text
+                        self._reveal_as_winner(auction_id, winning_commitment)
                         break
             else:
                 print_info(f"Auction {auction_id} closed without winner")
         
         except Exception as e:
             logger.error(f"Error processing result: {e}")
-    
-    def receive_identity_reveal(self, message):
-        """Receive identity reveal"""
-        try:
-            
-            data = message.get('data')
-            reveal = IdentityReveal.from_dict(data)
-            auction_id = reveal.auction_id
-            role = reveal.role
-            
-            # ✅ DEBUG
-            print(f"DEBUG: Received IDENTITY_REVEAL - role={role}, auction_id={auction_id}")
-            print(f"DEBUG: My username={self.username}")
-            
-            # Store in identity_manager
-            if reveal.role == "seller":
-                self.auction_manager.identity_manager.identity_reveals.setdefault(auction_id, {})
-                self.auction_manager.identity_manager.identity_reveals[auction_id]["seller"] = reveal
-                print_info(f"Seller revealed identity in auction {auction_id}")
-            
-            elif reveal.role == "winner":
-                self.auction_manager.identity_manager.identity_reveals.setdefault(auction_id, {})
-                self.auction_manager.identity_manager.identity_reveals[auction_id]["winner"] = reveal
-                print_info(f"Winner revealed identity in auction {auction_id}")
-            
-            # ✅ DEBUG
-            reveals = self.auction_manager.identity_manager.identity_reveals.get(auction_id, {})
-            print(f"DEBUG: Reveals stored for {auction_id}: {list(reveals.keys())}")
-            
-            # ✅ CHECK IF BOTH REVEALED
-            if self.auction_manager.identity_manager.are_identities_revealed(auction_id):
-                print(f"DEBUG: BOTH REVEALED! Going to show info...")
-                
-                seller_reveal = self.auction_manager.identity_manager.get_seller_identity(auction_id)
-                winner_reveal = self.auction_manager.identity_manager.get_winner_identity(auction_id)
-                
-                seller_username = self._get_username_from_pubkey(seller_reveal.public_key)
-                winner_username = self._get_username_from_pubkey(winner_reveal.public_key)
-                
-                # Check if I AM the seller or winner of this auction
-                my_pubkey_str = serialize_key(self.public_key, is_private=False).decode('utf-8')
-                
-                if seller_reveal.public_key == my_pubkey_str or winner_reveal.public_key == my_pubkey_str:
-                    print("\n" + "="*60)
-                    print_success("🎉 IDENTITIES REVEALED - AUCTION INFORMATION")
-                    print("="*60)
-                    print(f"   🏛️  Auction ID: {auction_id}")
-                    print(f"   👤 Seller: {seller_username}")
-                    print(f"   🏆 Winner: {winner_username}")
-                    print("="*60 + "\n")
-            else:
-                print(f"DEBUG: Still missing reveals. Stored: {list(reveals.keys())}")
-        
-        except Exception as e:
-            logger.error(f"Error processing reveal: {e}")
-            import traceback
-            traceback.print_exc()
     
     def receive_encrypted_reveal(self, message):
         """Receive reveal and try to decrypt"""
@@ -659,12 +591,52 @@ class AuctionNode:
             if decrypted is None:
                 logger.debug("Encrypted_Reveal not for me")
                 return
+            else:
+                logger.info(f"🔓 CONSEGUI DESENCRIPTAR! (sou o destinatário correto)")
             
             logger.info("Received private identity reveal")
             
             reveal = IdentityReveal.from_dict(decrypted)
             auction_id = reveal.auction_id
             
+            target_commitment = decrypted.get('target_commitment')
+            
+            if target_commitment:
+                # Verificar se tenho este commitment nos meus secrets
+                is_for_me = False
+                
+                # Verificar se sou seller (tenho reserve commitment)
+                if auction_id in self.my_secrets:
+                    secret = self.my_secrets[auction_id]
+                    if secret.get('type') == 'seller':
+                        # Recriar commitment do reserve price
+                        from commitement import create_commitment
+                        _, private_commit = create_commitment(
+                            auction_id, 
+                            secret['reserve_price']
+                        )
+                        if private_commit['commitment'] == target_commitment:
+                            is_for_me = True
+
+                # ✅ ADICIONA ISTO: Verificar se o commitment é do auction que criei
+            auction = self.auction_manager.get_auction(auction_id)
+            if auction and auction.reserve_price_commitment == target_commitment:
+                # Este reveal é do seller, e eu fiz bid neste auction
+                for secret_key, secret in self.my_secrets.items():
+                    if secret.get('type') == 'bidder' and secret.get('auction_id') == auction_id:
+                        is_for_me = True
+                        break
+                
+                # Verificar se sou winner (tenho bid commitment)
+                for secret_key, secret in self.my_secrets.items():
+                    if secret.get('type') == 'bidder' and secret.get('auction_id') == auction_id:
+                        if secret.get('bid_commitment') == target_commitment:
+                            is_for_me = True
+                            break
+                
+                if not is_for_me:
+                    logger.info(f"❌ [{self.username}] Reveal não era para mim (commitment diferente)")
+                    return
             if auction_id not in self.auction_manager.identity_manager.identity_reveals:
                 self.auction_manager.identity_manager.identity_reveals[auction_id] = {}
                 
@@ -840,11 +812,6 @@ class AuctionNode:
                 'timestamp': announcement.timestamp
             }
             
-            self.blockchain.add_transaction({
-                'type': 'AUCTION_ANNOUNCE',
-                'data': announcement.to_dict(),
-                'timestamp': announcement.timestamp
-            })
             broadcast_to_peers(self.peer_sockets, message)
             
             # Mine block
@@ -995,15 +962,28 @@ class AuctionNode:
                 winner_public_key = self.public_key,
                 winning_bid_commitment = winning_commitment
             )
+            auction = self.auction_manager.get_auction(auction_id)
+            reveal_data = reveal.to_dict()
+            reveal_data['target_commitment'] = auction.reserve_price_commitment
             print("✅ DEBUG: Reveal created")
             print(f"\n🔍 DEBUG: Available ring keys: {len(self.ring_keys)}")
             
             sent_count = 0
             
+            my_pubkey_bytes = serialize_key(self.public_key, is_private=False)
+            
             for i, ring_key in enumerate(self.ring_keys):
                 print(f"🔍 DEBUG: Trying to encrypt for key {i+1}/{len(self.ring_keys)}...")
                 try:
-                    encrypted_msg = reveal.to_encrypted_message(ring_key)
+                    ring_key_bytes = serialize_key(ring_key, is_private=False)
+                    
+                    if ring_key_bytes == my_pubkey_bytes:
+                        continue
+    
+                    encrypted_package = encrypt_for_dest(reveal_data, ring_key)
+                    encrypted_package['type'] = 'ENCRYPTED_REVEAL'
+                    encrypted_package['timestamp'] = reveal.reveal_timestamp
+                    encrypted_msg = encrypted_package
                     print(f"✅ DEBUG: Encryption {i+1} successful")
                     
                     broadcast_to_peers(self.peer_sockets, encrypted_msg)
@@ -1025,12 +1005,6 @@ class AuctionNode:
     def close_and_finalize_auction(self, auction_id):
         """
         Close and finalize auction (seller only)
-        
-        Args:
-            auction_id: Auction ID
-            
-        Returns:
-            bool: True if success
         """
         try:
             if auction_id not in self.my_secrets:
@@ -1079,14 +1053,27 @@ class AuctionNode:
                     seller_public_key = self.public_key 
                 )
                 
+                reveal_data = reveal.to_dict()
+                reveal_data['target_commitment'] = result.winner_bid_commitment
+
                 sent_count = 0
                 failed_count = 0
+                
+                my_pubkey_bytes = serialize_key(self.public_key, is_private=False)
                 
                 for i, ring_key in enumerate(self.ring_keys):
                     print(f"🔍 DEBUG: Trying to encrypt for key {i+1}/{len(self.ring_keys)}...")
                     try:
+                        ring_key_bytes = serialize_key(ring_key, is_private=False)
+
+                        if ring_key_bytes == my_pubkey_bytes:
+                            continue
                         
-                        encrypted_msg = reveal.to_encrypted_message(ring_key)
+                        encrypted_package = encrypt_for_dest(reveal_data, ring_key)
+                        encrypted_package['type'] = 'ENCRYPTED_REVEAL'
+                        encrypted_package['timestamp'] = reveal.reveal_timestamp
+                        encrypted_msg = encrypted_package
+                        
                         print(f"✅ DEBUG: Encryption {i+1} successful")
                         broadcast_to_peers(self.peer_sockets, encrypted_msg)
                         sent_count += 1
