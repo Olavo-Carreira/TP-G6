@@ -234,12 +234,7 @@ class AuctionNode:
                 'hash': data_hash
             }
         else:
-            logger.warning("Usando tempo local como fallback")
-            return {
-                'timestamp': time.time(),
-                'signature': None,
-                'hash': data_hash
-            }
+            raise Exception("Servidor de timestamp nao disponivel!")
         
     def sync_time_with_server(self):
         """Calcular offset de tempo entre o server e local"""
@@ -800,21 +795,17 @@ class AuctionNode:
     # ==================== AUCTION OPERATIONS ====================
     
     def create_auction(self, item_description, reserve_price, duration_minutes):
-        """
-        Criar novo leilão
+        """Criar novo leilão"""
         
-        Args:
-            item_description: Descrição do item
-            reserve_price: Preço mínimo
-            duration_minutes: Duração em minutos
-            
-        Returns:
-            str: ID do leilão criado
-        """
         try:
             print_progress("Criando leilão...", 1)
             
-            trusted_time_data = self.get_trusted_time(f"{self.username}{item_description}{reserve_price}")
+            try:
+                trusted_time_data = self.get_trusted_time(f"{self.username}{item_description}{reserve_price}")
+            except Exception as e:
+                print_error(f"Falha ao obter timestamp: {e}")
+                print_warning("Nao e possivel criar leilao sem timestamp confiavel")
+                return None
             
             ring_keys_to_use = self.get_ring_keys_for_signing()
             
@@ -868,16 +859,8 @@ class AuctionNode:
             return None
     
     def submit_bid(self, auction_id, bid_amount):
-        """
-        Submeter bid a um leilão
+        """Submeter bid a um leilão"""
         
-        Args:
-            auction_id: ID do leilão
-            bid_amount: Valor da bid
-            
-        Returns:
-            bool: True se sucesso
-        """
         try:
             
             if auction_id in self.my_secrets and self.my_secrets[auction_id].get('type') == 'seller':
@@ -898,7 +881,11 @@ class AuctionNode:
             
             print_progress("Submetendo bid...", 1)
             
-            trusted_time_data = self.get_trusted_time(f"{auction_id}{bid_amount}{self.username}")
+            try:
+                trusted_time_data = self.get_trusted_time(f"{auction_id}{bid_amount}{self.username}")
+            except Exception as e:
+                print_error(f"Falha ao obter timestamp: {e}")
+                print_warning("Nao e possivel submeter bid sem timestamp confiavel")
             
             ring_keys_to_use = self.get_ring_keys_for_signing()
             

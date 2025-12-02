@@ -40,22 +40,48 @@ class WinnerDetermination:
     
     @staticmethod
     def determine_winner(auction_id, reserve_price, all_bids: List):
+        """
+        Determinar vencedor do leilão
         
+        """
+        
+        # Filtrar bids válidas (acima do reserve price)
         valid_bids = [
             bid for bid in all_bids
             if bid.bid_value >= reserve_price
         ]
         
-        if valid_bids:
-            winner_bid = max(valid_bids, key = lambda b : b.bid_value)
-            winner_bid_id = winner_bid.bid_id
-            winner_commitment = winner_bid.bid_commitment
-            winning_amount = winner_bid.bid_value
-        else:
+        if not valid_bids:
+            # Sem vencedor
             winner_bid_id = None
             winner_commitment = None
             winning_amount = None
+        else:
+            valid_bids_sorted = sorted(
+                valid_bids,
+                key=lambda b: (-b.bid_value, b.timestamp)  # - para desc, sem - para asc
+            )
             
+            winner_bid = valid_bids_sorted[0]
+            
+            tied_bids = [
+                bid for bid in valid_bids
+                if bid.bid_value == winner_bid.bid_value
+            ]
+            
+            if len(tied_bids) > 1:
+                print(f"\n⚠️  EMPATE DETECTADO: {len(tied_bids)} bids com valor {winner_bid.bid_value}€")
+                print(f"   Winner escolhido por timestamp (earliest): {winner_bid.timestamp}")
+                for i, bid in enumerate(sorted(tied_bids, key=lambda b: b.timestamp)):
+                    print(f"   #{i+1}: Bid {bid.bid_id[:8]}... @ timestamp {bid.timestamp}")
+                print()
+            
+            # Extrair dados do winner
+            winner_bid_id = winner_bid.bid_id
+            winner_commitment = winner_bid.bid_commitment
+            winning_amount = winner_bid.bid_value
+        
+        # Criar resultado
         result = AuctionResult(
             auction_id=auction_id,
             winner_bid_id=winner_bid_id,

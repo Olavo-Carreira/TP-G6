@@ -43,21 +43,20 @@ class Blockchain:
         
         if not self.server_public_key:
             print("Sem chave do server - nao e possivel verificar timestamp")
-            return True
+            return False
         
         tx_type = transaction.get('type')
         data = transaction.get('data', {})
         timestamp_sig = data.get('timestamp_signature')
         
         if not timestamp_sig:
-            return True
+            return False
         
         timestamp = transaction.get('timestamp')
-        
-        
         data_hash = data.get('timestamp_hash')
+        
         if not data_hash:
-            return True
+            return False
         
         message = f"{data_hash}:{timestamp}"
         
@@ -66,9 +65,11 @@ class Blockchain:
             is_valid = verify_signature(message, sig_bytes, self.server_public_key)
             if not is_valid:
                 print(f"Timestamp com assinatura invalida")
-            return is_valid
+                return False
         except:
             return False
+        
+        return True
         
     def validate_transaction(self, transaction):
         """
@@ -112,7 +113,7 @@ class Blockchain:
         
         elif tx_type == 'AUCTION_ANNOUNCE':
             data = transaction.get('data', {})
-            required_fields = ['auction_id', 'item_description', 'start_time', 'end_time',  'reserve_price_commitment' , 'ring_signature']
+            required_fields = ['auction_id', 'item_description', 'start_time', 'end_time',  'reserve_price_commitment' , 'ring_signature', 'timestamp_signature', 'timestamp_hash']
             if not all(field in data for field in required_fields):
                 missing = [field for field in required_fields if field not in data]
                 print(f"Auction invalido - campos em falta {missing}")
@@ -123,7 +124,7 @@ class Blockchain:
         
         elif tx_type == 'BID':
             data = transaction.get('data', {})
-            required_fields = ['bid_id', 'auction_id', 'bid_value', 'ring_signature']
+            required_fields = ['bid_id', 'auction_id', 'bid_value', 'ring_signature', 'timestamp_signature', 'timestamp_hash']
             if not all(field in data for field in required_fields):
                 missing = [field for field in required_fields if field not in data]
                 print(f"Auction invalido - campos em falta {missing}")

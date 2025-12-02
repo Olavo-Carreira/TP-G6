@@ -26,7 +26,10 @@ class Bid:
     def create(auction_id, bidder_private_key, bid_amount,ring_public_keys, bid_timestamp = None, timestamp_signature = None, timestamp_hash = None):
         """"Cria uma bid"""
         
-        current_time = bid_timestamp if bid_timestamp else time.time()
+        if bid_timestamp is None or timestamp_signature is None:
+            raise ValueError("Timestamp confiável é obrigatório! Não é possível criar bid sem timestamp do servidor.")
+        
+        current_time = bid_timestamp
         
         bid_id = hashlib.sha256(
             f"{auction_id}{bid_amount}{current_time}".encode()
