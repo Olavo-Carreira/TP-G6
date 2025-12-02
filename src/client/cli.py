@@ -1,5 +1,5 @@
 import time
-from typing import List,  Any
+from typing import List, Any
 
 def print_header(title, width=60):
     """Imprimir cabeçalho bonito"""
@@ -13,8 +13,16 @@ def print_box(title, lines, width=60):
     print("\n╔" + "═"*(width-2) + "╗")
     print(f"║ {title:^{width-4}} ║")
     print("╠" + "═"*(width-2) + "╣")
-    for line in lines:
-        print(f"║ {line:<{width-4}} ║")
+    for i, line in enumerate(lines):
+        if i < 3:
+            print(f"║ {line:<{width-5}} ║")
+        elif i == 3:
+            print(f"║ {line:<{width-3}} ║")
+        elif i  == 5:
+            print(f"║ {line:<{width-3}} ║")
+        else:
+            print(f"║ {line:<{width-5}} ║")
+    
     print("╚" + "═"*(width-2) + "╝")
 
 
@@ -32,7 +40,18 @@ def print_menu(title, options, width=60):
     print("╠" + "═"*(width-2) + "╣")
     
     for i, option in enumerate(options, 1):
-        print(f"║ {i}. {option:<{width-7}} ║")
+        if i < 5:
+            print(f"║ {i}. {option:<{width-8}} ║")
+        elif i == 5:
+            print(f"║ {i}. {option:<{width-6}} ║")
+        elif i == 6:
+            print(f"║ {i}. {option:<{width-8}} ║")
+        elif i == 7:
+            print(f"║ {i}. {option:<{width-6}} ║")
+        elif 7 < i < 10: 
+            print(f"║ {i}. {option:<{width-8}} ║")
+        else:
+            print(f"║ {i}. {option:<{width-9}} ║")
     
     print("╚" + "═"*(width-2) + "╝")
 
@@ -138,13 +157,13 @@ def get_input(prompt, input_type=str, validator=None):
             
             # Validar se fornecido validador
             if validator and not validator(value):
-                print_error("Valor inválido, tenta novamente")
+                print_error("Wrong value, please try again")
                 continue
             
             return value
             
         except ValueError:
-            print_error(f"Por favor insere um {input_type.__name__} válido")
+            print_error(f"Please enter a valid {input_type.__name__} input")
         except KeyboardInterrupt:
             print("\n")
             raise
@@ -161,13 +180,13 @@ def get_confirmation(prompt):
         bool: True se sim, False se não
     """
     while True:
-        response = input(f"➤ {prompt} (s/n): ").lower().strip()
+        response = input(f"➤ {prompt} (y/n): ").lower().strip()
         if response in ['s', 'sim', 'y', 'yes']:
             return True
         elif response in ['n', 'nao', 'não', 'no']:
             return False
         else:
-            print_error("Por favor responde 's' ou 'n'")
+            print_error("Please enter 'y' or 'n'")
 
 
 def print_progress(message, duration=2):
@@ -190,12 +209,12 @@ def print_progress(message, duration=2):
         time.sleep(0.1)
         i += 1
     
-    sys.stdout.write(f"\r✅ {message} - Concluído!\n")
+    sys.stdout.write(f"\r✅ {message} - Completed!\n")
     sys.stdout.flush()
 
 
 def clear_screen():
-    """Limpar o ecrã"""
+    """Clear the screen"""
     import os
     os.system('cls' if os.name == 'nt' else 'clear')
 
@@ -219,38 +238,38 @@ def print_node_status(node):
         
     lines = [
         f"👤 User: {node.username}",
-        f"🔗 Peers conectados: {node.get_active_peers_count()}",
-        f"🔑 Ring keys (total): {len(node.ring_keys)} ",
-        f"⛓️  Blocos na chain: {len(node.blockchain.chain)}",
-        f"📋 Transações pendentes: {len(node.blockchain.pending_transactions)}",
-        f"🏛️  Leilões ativos: {len(node.get_active_auctions())}",
+        f"🔗 Connected Peers: {node.get_active_peers_count()}",
+        f"🔑 Ring Keys (total): {len(node.ring_keys)}",
+        f"⛓️  Blocks in Chain: {len(node.blockchain.chain)}",
+        f"📋 Pending Transactions: {len(node.blockchain.pending_transactions)}",
+        f"🏛️  Active Auctions: {len(node.get_active_auctions())}",
     ]
     
     if abs(node.time_offset) > 5:
-        lines.append(f"Relogio descronizado {node.time_offset:+.1f}s")
+        lines.append(f"Clock offset {node.time_offset:+.1f}s")
         
-    print_box("STATUS DO NODE", lines)
+    print_box("NODE STATUS", lines)
 
 
 def format_timestamp(timestamp):
-    """Formatar timestamp para string legível"""
+    """Format timestamp to readable string"""
     return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
 
 
 def format_currency(amount):
-    """Formatar valor monetário"""
+    """Format currency value"""
     return f"{amount:.2f}€"
 
 
 def print_logo():
-    """Imprimir logo ASCII do sistema"""
+    """Print ASCII logo of the system"""
     logo = """
     ╔═══════════════════════════════════════════════════╗
     ║                                                   ║
-    ║        🏛️  SISTEMA DE LEILÃO P2P  🏛️              ║
+    ║            🏛️  AUCTION SYSTEM P2P  🏛️               ║
     ║                                                   ║
-    ║        Privacy-Preserving Auction System         ║
-    ║        Com Ring Signatures & Blockchain          ║
+    ║        Privacy-Preserving Auction System          ║
+    ║        With Ring Signatures & Blockchain          ║
     ║                                                   ║
     ╚═══════════════════════════════════════════════════╝
     """
@@ -258,7 +277,7 @@ def print_logo():
 
 
 def print_divider(char="─", width=60):
-    """Imprimir linha divisória"""
+    """Print divider line"""
     print(char * width)
 
 

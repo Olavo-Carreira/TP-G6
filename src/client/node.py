@@ -61,6 +61,9 @@ class AuctionNode:
         
         self.server_public_key = None
         
+        # TIAGO
+        self.my_won_auctions = set()  # {auction_id}
+        
         logger.info(f"Nó {username} criado na porta {self.p2p_port}")
     
     def _find_free_port(self):
@@ -972,6 +975,9 @@ class AuctionNode:
                     secret_data.get('auction_id') == auction_id and
                     secret_data.get('bid_commitment') == winner_commitment):
                     
+                    # TIAGO
+                    self.my_won_auctions.add(auction_id)
+                    
                     print("\n" + "="*70)
                     print_success("🏆🏆🏆 PARABÉNS! GANHASTE O LEILÃO! 🏆🏆🏆")
                     print("="*70)
@@ -985,7 +991,7 @@ class AuctionNode:
                     self._reveal_as_winner(auction_id, winner_commitment)
                     
                     return True
-                return False
+            return False
         except Exception as e:
             logger.error(f"Erro ao verificar vencedor: {e}")
             return False
@@ -1327,21 +1333,23 @@ def run_cli(node):
             
             # Menu principal
             options = [
-                "📢 Criar Leilão",
-                "💰 Fazer Bid",
-                "📋 Ver Leilões Ativos",
-                "🏆 Meus Leilões (Seller)",
-                "🔓 Fechar Leilão",
-                "⛏️  Minerar Bloco",
-                "🔗 Ver Blockchain",
-                "👥 Ver Peers",
-                "🔄 Atualizar",
-                "❌ Sair"
+                "📢 Create Auction",
+                "💰 Submit Bid",
+                "📋 View Active Auctions",
+                "🏆 My Auctions (Seller)",
+                "🎖️  Won Auctions (Winner)",
+                "🔓 Close Auction",
+                "⛏️  Mine Block",
+                "🔗 View Blockchain",
+                "👥 View Peers",
+                "🔄 Refresh",
+                "❌ Exit"
             ]
             
-            print_menu("MENU PRINCIPAL", options, width=60)
+            print_menu("MAIN MENU", options, width=60)
             
-            choice = get_input("Escolhe uma opção", int, lambda x: 1 <= x <= len(options))
+            print()
+            choice = get_input("Choose an option", int, lambda x: 1 <= x <= len(options))
             
             if choice == 1:
                 cli_create_auction(node)
@@ -1352,121 +1360,119 @@ def run_cli(node):
             elif choice == 4:
                 cli_view_my_auctions(node)
             elif choice == 5:
-                cli_close_auction(node)
+                cli_view_won_auctions(node)  
             elif choice == 6:
-                cli_mine_block(node)
+                cli_close_auction(node)
             elif choice == 7:
-                cli_view_blockchain(node)
+                cli_mine_block(node)
             elif choice == 8:
-                cli_view_peers(node)
+                cli_view_blockchain(node)
             elif choice == 9:
-                continue  # Apenas refresh
+                cli_view_peers(node)
             elif choice == 10:
-                if get_confirmation("Tens a certeza que queres sair?"):
-                    print_info("A encerrar node...")
+                continue  # Apenas refresh
+            elif choice == 11:
+                if get_confirmation("Are you sure you want to exit?"):
+                    print_info("Closing node...")
                     break
         
         except KeyboardInterrupt:
             print("\n")
-            if get_confirmation("Tens a certeza que queres sair?"):
+            if get_confirmation("Are you sure you want to exit?"):
                 break
         except Exception as e:
-            print_error(f"Erro: {e}")
+            print_error(f"Error: {e}")
             press_enter_to_continue()
 
 
 # ========== CLI FUNCTIONS ====================
 
 def cli_create_auction(node):
-    """CLI: Criar leilão"""
+    """CLI: Create auction"""
     clear_screen()
-    print_header("CRIAR LEILÃO")
+    print_header("CREATE AUCTION")
     
-    item = get_input("Descrição do item", str)
-    reserve_price = get_input("Preço de reserva (€)", float, lambda x: x > 0)
-    duration = get_input("Duração (minutos)", int, lambda x: x > 0)
+    item = get_input("Item description", str)
+    reserve_price = get_input("Reserve price (€)", float, lambda x: x > 0)
+    duration = get_input("Duration (minutes)", int, lambda x: x > 0)
     
-    if get_confirmation("Confirmar criação do leilão?"):
+    if get_confirmation("Confirm auction creation?"):
         auction_id = node.create_auction(item, reserve_price, duration)
         if auction_id:
-            print_success(f"Leilão criado com sucesso!")
+            print_success(f"Auction created successfully!")
             print_info(f"ID: {auction_id}")
     
     press_enter_to_continue()
 
 
 def cli_submit_bid(node):
-    """CLI: Submeter bid"""
+    """CLI: Submit bid"""
     clear_screen()
-    print_header("FAZER BID")
+    print_header("SUBMIT BID")
     
-    # Mostrar leilões ativos
+    # Show active auctions
     auctions = node.get_active_auctions()
     if not auctions:
-        print_warning("Não há leilões ativos no momento")
+        print_warning("No active auctions at the moment")
         press_enter_to_continue()
         return
     
-    print("\nLeilões Ativos:")
+    print("\nActive Auctions:")
     for i, auction in enumerate(auctions, 1):
         print(f"\n{i}. {auction.item_description}")
         print(f"   ID: {auction.auction_id}")
-        print(f"   Termina: {format_timestamp(auction.end_time)}")
+        print(f"   Ends: {format_timestamp(auction.end_time)}")
     
-    idx = get_input(f"Escolhe leilão (1-{len(auctions)})", int, lambda x: 1 <= x <= len(auctions))
+    idx = get_input(f"Choose auction (1-{len(auctions)})", int, lambda x: 1 <= x <= len(auctions))
     auction = auctions[idx - 1]
     
     while True:
         bids = node.get_auction_bids(auction.auction_id)
         if bids:
             max_bid = max(bids, key = lambda b: b.bid_value)
-            print(f"\n Maior bid atual: {max_bid.bid_value:.2f}€")
-            print(f"Total de bids: {len(bids)}")
+            print(f"\n Current highest bid: {max_bid.bid_value:.2f}€")
+            print(f"Total bids: {len(bids)}")
         else:
-            print("\n Ainda nao ha bids neste leilao")
+            print("\n No bids yet in this auction")
         
-        bid_amount = get_input("\n Valor da tua bid (€) [0 para cancelar]", float, lambda x: x >= 0)
+        bid_amount = get_input("\n Your bid amount (€) [0 to cancel]", float, lambda x: x >= 0)
         
         if bid_amount == 0:
-            print_info("Bid cancelada")
+            print_info("Bid cancelled")
             break
         
-        if get_confirmation(f"Confirmar bid de {bid_amount:.2f}€?"):
+        if get_confirmation(f"Confirm bid of {bid_amount:.2f}€?"):
             success = node.submit_bid(auction.auction_id, bid_amount)
             
             if not success:
-                if not get_confirmation("Quer tentar com outro valor?"):
+                if not get_confirmation("Try with another value?"):
                     break
-                
             else:
                 break
-        
         else:
-            if not get_confirmation("Quer tentar com outro valor?"):
+            if not get_confirmation("Try with another value?"):
                 break
-        
+    
     press_enter_to_continue()
             
 
 
 def cli_view_active_auctions(node):
-    """CLI: Ver leilões ativos"""
+    """CLI: View active auctions"""
     clear_screen()
-    print_header("LEILÕES ATIVOS")
+    print_header("ACTIVE AUCTIONS")
     
     auctions = node.get_active_auctions()
     server_time = node.get_server_time()
     
     if not auctions:
-        print_warning("Não há leilões ativos no momento")
+        print_warning("No active auctions at the moment")
     else:
         for auction in auctions:
-            
             status = node.auction_manager.get_auction_status(auction.auction_id, current_time = server_time)
-            
             print_auction_details(auction, status)
             
-            # Mostrar bids
+            # Show bids
             bids = node.get_auction_bids(auction.auction_id)
             if bids:
                 print(f"\n  Bids ({len(bids)}):")
@@ -1478,53 +1484,105 @@ def cli_view_active_auctions(node):
 
 
 def cli_view_my_auctions(node):
-    """CLI: Ver meus leilões (onde sou seller)"""
+    """CLI: View my auctions (seller)"""
     clear_screen()
-    print_header("MEUS LEILÕES")
+    print_header("MY AUCTIONS")
     
     my_auctions = [aid for aid, secret in node.my_secrets.items() 
                 if secret.get('type') == 'seller']
     
     if not my_auctions:
-        print_warning("Não criaste nenhum leilão ainda")
+        print_warning("You haven't created any auctions yet")
     else:
-        
         server_time = node.get_server_time()
         
         for auction_id in my_auctions:
             auction = node.auction_manager.get_auction(auction_id)
             if auction:
-                
                 status = node.auction_manager.get_auction_status(auction_id, current_time = server_time)
-                
                 print_auction_details(auction, status)
                 
                 bids = node.get_auction_bids(auction_id)
-                print(f"  Total de bids: {len(bids)}")
+                print(f"  Total bids: {len(bids)}")
                 if bids:
                     max_bid = max(bids, key=lambda b: b.bid_value)
-                    print(f"  Maior bid: {max_bid.bid_value:.2f}€")
+                    print(f"  Highest bid: {max_bid.bid_value:.2f}€")
                 print()
     
     press_enter_to_continue()
 
 
-def cli_close_auction(node):
-    """CLI: Fechar leilão"""
+def cli_view_won_auctions(node):
+    """CLI: View won auctions (winner)"""
     clear_screen()
-    print_header("FECHAR LEILÃO")
+    print_header("WON AUCTIONS")
+    
+    if not node.my_won_auctions:
+        print_warning("You haven't won any auctions yet")
+        press_enter_to_continue()
+        return
+    
+    print(f"\nTotal won auctions: {len(node.my_won_auctions)}\n")
+    
+    for auction_id in node.my_won_auctions:
+        auction = node.auction_manager.get_auction(auction_id)
+        
+        if not auction:
+            print_warning(f"Auction {auction_id} not found in blockchain")
+            continue
+        
+        # Get auction result
+        result_data = None
+        for block in reversed(node.blockchain.chain):
+            for tx in block.transactions:
+                if tx.get('type') == 'auction_result':
+                    data = tx.get('data', {})
+                    if data.get('auction_id') == auction_id:
+                        result_data = data
+                        break
+            if result_data:
+                break
+        
+        # Find my winning bid
+        my_winning_bid = None
+        for secret_key, secret_data in node.my_secrets.items():
+            if (secret_data.get('type') == 'bidder' and
+                secret_data.get('auction_id') == auction_id):
+                my_winning_bid = secret_data
+                break
+        
+        print("-"*60)
+        print(f"🏛️  Auction ID: {auction_id[:16]}...")
+        print(f"🏆 Item: {auction.item_description}")
+        
+        if my_winning_bid:
+            print(f"💰 My winning bid: {my_winning_bid['bid_value']}€")
+        
+        print(f"📅 Start: {format_timestamp(auction.start_time)}")
+        print(f"⏰ End: {format_timestamp(auction.end_time)}")
+        
+        print("-"*60)
+        print()
+    
+    press_enter_to_continue()
+
+
+def cli_close_auction(node):
+    """CLI: Close auction"""
+    clear_screen()
+    print_header("CLOSE AUCTION")
     
     my_auctions = [aid for aid, secret in node.my_secrets.items() 
                 if secret.get('type') == 'seller']
     
     if not my_auctions:
-        print_warning("Não tens leilões para fechar")
+        print_warning("You have no auctions to close")
         press_enter_to_continue()
         return
     
     server_time = node.get_server_time()
     
-    print("\nMeus Leilões:")
+    print("\nMy Auctions:")
     for i, auction_id in enumerate(my_auctions, 1):
         auction = node.auction_manager.get_auction(auction_id)
         if auction:
@@ -1532,62 +1590,63 @@ def cli_close_auction(node):
             print(f"\n{i}. {auction.item_description} ({auction_id})")
             print(f"   Status: {status.value}")
     
-    idx = get_input(f"Escolhe leilão (1-{len(my_auctions)})", int, lambda x: 1 <= x <= len(my_auctions))
+    idx = get_input(f"Choose auction (1-{len(my_auctions)})", int, lambda x: 1 <= x <= len(my_auctions))
     auction_id = my_auctions[idx - 1]
     
-    if get_confirmation("Fechar e determinar vencedor?"):
+    if get_confirmation("Close and determine winner?"):
         node.close_and_finalize_auction(auction_id)
     
     press_enter_to_continue()
 
 
 def cli_mine_block(node):
-    """CLI: Minerar bloco"""
+    """CLI: Mine block"""
     clear_screen()
-    print_header("MINERAR BLOCO")
+    print_header("MINE BLOCK")
     
-    print_info(f"Transações pendentes: {len(node.blockchain.pending_transactions)}")
+    print_info(f"Pending transactions: {len(node.blockchain.pending_transactions)}")
     
     if node.blockchain.pending_transactions:
-        if get_confirmation("Minerar bloco agora?"):
-            print_progress("Minerando...", 2)
+        if get_confirmation("Mine block now?"):
+            print_progress("Mining...", 2)
             node.mine_block()
     else:
-        print_warning("Não há transações pendentes")
+        print_warning("No pending transactions")
     
     press_enter_to_continue()
 
 
 def cli_view_blockchain(node):
-    """CLI: Ver blockchain"""
+    """CLI: View blockchain"""
     clear_screen()
     print_header("BLOCKCHAIN")
     
-    print_info(f"Total de blocos: {len(node.blockchain.chain)}")
-    print_info(f"Último hash: {node.blockchain.get_last_block_hash()[:32]}...")
+    print_info(f"Total blocks: {len(node.blockchain.chain)}")
+    print_info(f"Last hash: {node.blockchain.get_last_block_hash()[:32]}...")
     
-    if get_confirmation("Ver detalhes dos blocos?"):
-        for block in node.blockchain.chain[-5:]:  # Últimos 5
-            print(f"\nBloco #{block.index}")
+    if get_confirmation("View block details?"):
+        for block in node.blockchain.chain[-5:]:  # Last 5
+            print(f"\nBlock #{block.index}")
             print(f"  Hash: {block.hash[:32]}...")
-            print(f"  Transações: {len(block.transactions)}")
+            print(f"  Transactions: {len(block.transactions)}")
             print(f"  Timestamp: {format_timestamp(block.timestamp)}")
     
     press_enter_to_continue()
 
 
 def cli_view_peers(node):
-    """CLI: Ver peers"""
+    """CLI: View peers"""
     clear_screen()
-    print_header("PEERS CONECTADOS")
+    print_header("CONNECTED PEERS")
     
     active_peers = node.get_active_peers_count()
     
-    print_info(f"Peers conectados (aticos): {active_peers}")
+    print_info(f"Connected peers (active): {active_peers}")
     print_info(f"Ring size: {len(node.ring_keys)}")
     
     if active_peers < len(node.ring_keys) - 1:
-        print_warning(f"Alguns users estão offline ({len(node.ring_keys - 1 - active_peers )} offline)")
+        offline_count = len(node.ring_keys) - 1 - active_peers
+        print_warning(f"Some users are offline ({offline_count} offline)")
     
     press_enter_to_continue()
 
@@ -1597,13 +1656,12 @@ if __name__ == '__main__':
     import sys
     
     if len(sys.argv) < 2:
-        print("Uso: python node.py <username>")
-        print("Exemplo: python node.py Alice")
+        print("Use: python node.py <username>")
+        print("Example: python node.py Alice")
         sys.exit(1)
     
     username = sys.argv[1]
     
-    # TIAGO
     node = AuctionNode(username, p2p_port=None)
     node.start()
     
@@ -1613,4 +1671,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print("\n")
     finally:
-        print_info(f"Node {username} encerrado")
+        print_info(f"Node {username} closed")
