@@ -594,49 +594,52 @@ class AuctionNode:
             else:
                 logger.info(f"🔓 CONSEGUI DESENCRIPTAR! (sou o destinatário correto)")
             
-            logger.info("Received private identity reveal")
-            
             reveal = IdentityReveal.from_dict(decrypted)
             auction_id = reveal.auction_id
-            
             target_commitment = decrypted.get('target_commitment')
             
+            # ✅ Verificar se o reveal é para mim
             if target_commitment:
-                # Verificar se tenho este commitment nos meus secrets
                 is_for_me = False
+                auction = self.auction_manager.get_auction(auction_id)
                 
-                # Verificar se sou seller (tenho reserve commitment)
+                # Caso 1: Sou o SELLER e o target é o winner_bid_commitment
                 if auction_id in self.my_secrets:
                     secret = self.my_secrets[auction_id]
                     if secret.get('type') == 'seller':
-                        # Recriar commitment do reserve price
-                        from commitement import create_commitment
-                        _, private_commit = create_commitment(
-                            auction_id, 
-                            secret['reserve_price']
-                        )
-                        if private_commit['commitment'] == target_commitment:
-                            is_for_me = True
-
-                # ✅ ADICIONA ISTO: Verificar se o commitment é do auction que criei
-            auction = self.auction_manager.get_auction(auction_id)
-            if auction and auction.reserve_price_commitment == target_commitment:
-                # Este reveal é do seller, e eu fiz bid neste auction
-                for secret_key, secret in self.my_secrets.items():
-                    if secret.get('type') == 'bidder' and secret.get('auction_id') == auction_id:
+                        # O winner está a revelar para mim
+                        # Target deve ser MEU reserve price commitment? NÃO!
+                        # Target é o BID COMMITMENT do winner
+                        for sk, s in self.my_secrets.items():
+                            # Não preciso verificar - se sou seller, aceito qualquer reveal de winner
+                            pass
                         is_for_me = True
-                        break
+                        logger.info(f"✅ [{self.username}] Sou seller - aceito reveal do winner")
                 
-                # Verificar se sou winner (tenho bid commitment)
+                # Caso 2: Sou o WINNER e o target é o reserve_price_commitment
+                if auction and auction.reserve_price_commitment == target_commitment:
+                    # Verificar se fiz bid neste auction
+                    for secret_key, secret in self.my_secrets.items():
+                        if secret.get('type') == 'bidder' and secret.get('auction_id') == auction_id:
+                            is_for_me = True
+                            logger.info(f"✅ [{self.username}] Sou winner - aceito reveal do seller")
+                            break
+                
+                # Caso 3: Sou o WINNER e o target é MEU bid_commitment
                 for secret_key, secret in self.my_secrets.items():
                     if secret.get('type') == 'bidder' and secret.get('auction_id') == auction_id:
                         if secret.get('bid_commitment') == target_commitment:
                             is_for_me = True
+                            logger.info(f"✅ [{self.username}] Meu bid commitment match - aceito reveal")
                             break
                 
                 if not is_for_me:
                     logger.info(f"❌ [{self.username}] Reveal não era para mim (commitment diferente)")
                     return
+            
+            # Guardar reveal
+            logger.info("Received private identity reveal")
+            
             if auction_id not in self.auction_manager.identity_manager.identity_reveals:
                 self.auction_manager.identity_manager.identity_reveals[auction_id] = {}
                 
@@ -650,11 +653,14 @@ class AuctionNode:
                 print_success(f"Winner revealed identity")
                 logger.info(f"Auction: {auction_id}")
 
+            # Mostrar info se ambos revelaram
             if self.auction_manager.identity_manager.are_identities_revealed(auction_id):
                 self._show_complete_auction_info(auction_id)
         
         except Exception as e:
             logger.error(f"Error processing encrypted reveal: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _show_complete_auction_info(self, auction_id):
         """Show complete information when identities are revealed"""
