@@ -598,7 +598,6 @@ class AuctionNode:
             auction_id = reveal.auction_id
             target_commitment = decrypted.get('target_commitment')
             
-            # ✅ Verificar se o reveal é para mim
             if target_commitment:
                 is_for_me = False
                 auction = self.auction_manager.get_auction(auction_id)
