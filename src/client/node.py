@@ -5,15 +5,16 @@ import threading
 import json
 import logging
 import hashlib
+import traceback
 
 from blockchain import Blockchain
 from network import start_p2p_server, connect_to_peer, send_message, broadcast_to_peers, receive_message
-from crypto_utils import generate_keypair, serialize_key, deserialize_key, decryprt_from_dest, encrypt_for_dest
+from crypto_utils import generate_keypair, serialize_key, deserialize_key, decryprt_from_dest, encrypt_for_dest, load_keypair, save_keypair, keypair_exists
 from manager import AuctionManager
 from announcement import AuctionAnnouncement
 from reveal import IdentityReveal
 from bid import Bid
-from commitement import save_secret_locally, load_secret_for_reveal, create_commitment
+from commitement import save_secret_locally, load_secret_for_reveal, create_commitment, load_all_secrets
 from cli import *
 from status import AuctionStatus
 from block import Block
@@ -31,13 +32,51 @@ logger = logging.getLogger(__name__)
 class AuctionNode:
     """P2P node to participate in anonymous auctions"""
     
-    def __init__(self, username, server_url='http://localhost:5001', p2p_port=None):
+    def __init__(self, username, server_url='http://localhost:5001', p2p_port=None, password=None):
         self.username = username
         self.server_url = server_url
         
-        # Generate cryptographic keys
-        self.private_key, self.public_key = generate_keypair()
-        logger.info(f"Keys generated for {username}")
+        # Load or create keypair (ALWAYS with password)
+        
+        if keypair_exists(username):
+            # Existing user - need password
+            if not password:
+                print_error(f"User {username} requires password")
+                
+                max_attempts = 3
+                for attempt in range(max_attempts):
+                    password = get_password("Enter your password")
+                    existing_keys = load_keypair(username, password)
+                    
+                    if existing_keys:
+                        self.private_key, self.public_key = existing_keys
+                        logger.info(f"🔄 Restored identity for {username}")
+                        break
+                    else:
+                        print_error(f"❌ Wrong password! ({max_attempts - attempt - 1} attempts remaining)")
+                        if attempt == max_attempts - 1:
+                            raise Exception("Maximum password attempts exceeded")
+                else:
+                    raise Exception("Authentication failed")
+            else:
+                # Password provided as parameter
+                existing_keys = load_keypair(username, password)
+                
+                if not existing_keys:
+                    raise Exception("Wrong password!")
+                
+                self.private_key, self.public_key = existing_keys
+                logger.info(f"🔄 Restored identity for {username}")
+        
+        else:
+            # New user - create with password
+            if not password:
+                print_error(f"Creating new user {username} - password required")
+                password = get_password("Create a password", confirm=True)
+            
+            self.private_key, self.public_key = generate_keypair()
+            save_keypair(username, self.private_key, self.public_key, password)
+            logger.info(f"🆕🔐 New identity created for {username}")
         
         # Local blockchain
         self.blockchain = Blockchain(server_public_key = None)
@@ -95,7 +134,13 @@ class AuctionNode:
     
     def start(self):
         """Start complete node"""
-        print_header(f"STARTING NODE {self.username}")
+        # Check if returning user
+        is_returning = keypair_exists(self.username)
+        
+        if is_returning:
+            print_header(f"WELCOME BACK, {self.username}!")
+        else:
+            print_header(f"CREATING NEW IDENTITY: {self.username}")
         
         # 1. Register with server
         print_info("Registering with central server...")
@@ -132,6 +177,22 @@ class AuctionNode:
         # 6. Update ring keys
         print_info("Updating key ring...")
         self.update_ring_keys()
+        
+        # Load saved secrets
+        
+        saved_secrets = load_all_secrets(self.username)
+        for secret in saved_secrets:
+            if 'auction_id' in secret and 'bid_id' not in secret:
+                # Seller secret
+                self.my_secrets[secret['auction_id']] = secret
+            elif 'bid_id' in secret:
+                # Bidder secret
+                self.my_secrets[f"bid_{secret['bid_id']}"] = secret
+        
+        if saved_secrets:
+            print_success(f"📂 Loaded {len(saved_secrets)} saved secrets")
+            logger.info(f"Restored secrets: {len([s for s in saved_secrets if 'bid_id' not in s])} auctions, "
+                       f"{len([s for s in saved_secrets if 'bid_id' in s])} bids")
 
         print_success(f"Node {self.username} ready!")
         time.sleep(1)
@@ -405,7 +466,6 @@ class AuctionNode:
     
     def receive_blockchain(self, message):
         """Receive blockchain from peer"""
-        from block import Block
         
         chain_data = message.get('chain', [])
         received_chain = [Block.from_dict(b) for b in chain_data]
@@ -658,7 +718,6 @@ class AuctionNode:
         
         except Exception as e:
             logger.error(f"Error processing encrypted reveal: {e}")
-            import traceback
             traceback.print_exc()
     
     def _show_complete_auction_info(self, auction_id):
@@ -730,13 +789,10 @@ class AuctionNode:
                         # Determine status based on timestamps
                         current_time = time.time()
                         if current_time < announcement.start_time:
-                            from status import AuctionStatus
                             self.auction_manager.auction_status[announcement.auction_id] = AuctionStatus.ANNOUNCED
                         elif current_time <= announcement.end_time:
-                            from status import AuctionStatus
                             self.auction_manager.auction_status[announcement.auction_id] = AuctionStatus.ACTIVE
                         else:
-                            from status import AuctionStatus
                             self.auction_manager.auction_status[announcement.auction_id] = AuctionStatus.BIDDING_CLOSED
                         
                         logger.debug(f"Auction rebuilt: {announcement.auction_id}")
@@ -803,12 +859,13 @@ class AuctionNode:
                 'reserve_price': reserve_price,
                 'type': 'seller'
             }
+            # ✅ UPDATED: Pass username
             save_secret_locally({
                 'auction_id': announcement.auction_id,
                 'reserve_nonce': reserve_nonce,
                 'reserve_price': reserve_price,
                 'type': 'seller'
-            })
+            }, self.username)
             
             # Broadcast to peers
             message = {
@@ -882,6 +939,7 @@ class AuctionNode:
             }
             self.processed_bid_ids.add(bid.bid_id)
             
+            # ✅ UPDATED: Pass username
             save_secret_locally({
                 'bid_id': bid.bid_id,
                 'bid_nonce': bid.bid_nonce,
@@ -889,7 +947,7 @@ class AuctionNode:
                 'bid_commitment': bid.bid_commitment,
                 'auction_id': auction_id,
                 'type': 'bidder'
-            })
+            }, self.username)
             
             # Broadcast to peers
             message = {
@@ -1630,7 +1688,7 @@ def cli_view_peers(node):
     press_enter_to_continue()
 
 
-# ========== MAIN ==========
+# ========== MAIN ========== #
 if __name__ == '__main__':
     import sys
     
@@ -1641,6 +1699,7 @@ if __name__ == '__main__':
     
     username = sys.argv[1]
     
+    # Create node (will ask for password if needed)
     node = AuctionNode(username, p2p_port=None)
     node.start()
     
@@ -1650,4 +1709,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print("\n")
     finally:
+        from cli import print_info
         print_info(f"Node {username} closed")

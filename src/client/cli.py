@@ -1,5 +1,9 @@
 import time
 import sys
+import os
+import getpass
+from crypto_utils import keypair_exists
+from pathlib import Path
 from typing import List, Any
 
 def print_header(title, width=60):
@@ -153,7 +157,6 @@ def print_progress(message, duration=2):
 
 def clear_screen():
     """Clear the screen"""
-    import os
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
@@ -163,11 +166,22 @@ def press_enter_to_continue():
 
 
 def print_node_status(node):
+    """
+    Print node status in a nice format
+    
+    Args:
+        node: AuctionNode object
+    """
     active_auctions = node.get_active_auctions()
     print(f"\nDEBUG: Active auctions returned: {len(active_auctions)}")
     for auction in active_auctions:
         print(f"  - {auction.auction_id}: {auction.item_description}")
-        
+    
+    # Check if user has persistent data
+    
+    user_dir = Path.home() / '.auction_system' / node.username.lower()
+    has_secrets = (user_dir / 'secrets.json').exists()
+    
     lines = [
         f"👤 User: {node.username}",
         f"🔗 Connected Peers: {node.get_active_peers_count()}",
@@ -176,6 +190,10 @@ def print_node_status(node):
         f"📋 Pending Transactions: {len(node.blockchain.pending_transactions)}",
         f"🏛️  Active Auctions: {len(node.get_active_auctions())}",
     ]
+    
+    # Add persistence info
+    if has_secrets:
+        lines.append(f"🔐 Secrets: {len(node.my_secrets)} saved")
     
     if abs(node.time_offset) > 5:
         lines.append(f"Clock offset {node.time_offset:+.1f}s")
@@ -211,5 +229,38 @@ def print_logo():
 def print_divider(char="─", width=60):
     """Print divider line"""
     print(char * width)
+
+
+def get_password(prompt="Password", confirm=False):
+    """
+    Get password securely (hidden input)
+    
+    Args:
+        prompt: Prompt message
+        confirm: If True, ask for confirmation
+        
+    Returns:
+        str: Password
+    """
+    
+    while True:
+        password = getpass.getpass(f"🔐 {prompt}: ")
+        
+        if not password:
+            print_error("Password cannot be empty")
+            continue
+        
+        if len(password) < 6:
+            print_warning("Password should be at least 6 characters")
+            if not get_confirmation("Use this password anyway?"):
+                continue
+        
+        if confirm:
+            confirm_password = getpass.getpass(f"Confirm password: ")
+            if password != confirm_password:
+                print_error("Passwords don't match! Try again.")
+                continue
+        
+        return password
 
 

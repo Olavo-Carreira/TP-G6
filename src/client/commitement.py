@@ -1,6 +1,7 @@
 import os
 import hashlib
 import json
+from pathlib import Path
 
 def create_commitment(auction_id, value):
     """Create commitment (hash of bid + nonce)"""
@@ -35,32 +36,73 @@ def verify_commitment(commitment_hash, value, nonce, auction_id):
     
     return recomputed_hash == commitment_hash   
 
-def save_secret_locally(secret_data, filename="my_secrets.json"):
-    """Save secret data"""
+def save_secret_locally(secret_data, username):
+    """
+    Save secret data for specific user
     
+    Args:
+        secret_data: Dictionary with secret information
+        username: Username to save secrets for
+    """
+    # Get user directory
+    user_dir = Path.home() / '.auction_system' / username.lower()
+    user_dir.mkdir(parents=True, exist_ok=True)
+    
+    secrets_file = user_dir / 'secrets.json'
+    
+    # Load existing secrets
     try:
-        with open(filename, 'r') as f:
-            all_bids = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        all_bids = []
+        if secrets_file.exists():
+            existing = json.loads(secrets_file.read_text())
+        else:
+            existing = []
+    except (json.JSONDecodeError, IOError):
+        existing = []
     
-    all_bids.append(secret_data)
+    # Append new secret
+    existing.append(secret_data)
     
-    with open(filename, 'w') as f:
-        json.dump(all_bids, f, indent=2)
+    # Save back
+    secrets_file.write_text(json.dumps(existing, indent=2))
 
-def load_secret_for_reveal(auction_id, filename="my_secrets.json"):
-    """Load secret data"""
+
+def load_all_secrets(username):
+    """
+    Load all secrets for user
+    
+    Args:
+        username: Username to load secrets for
+        
+    Returns:
+        list: List of secret dictionaries
+    """
+    secrets_file = Path.home() / '.auction_system' / username.lower() / 'secrets.json'
+    
+    if not secrets_file.exists():
+        return []
     
     try:
-        with open(filename, 'r') as f:
-            all_bids = json.load(f)
+        return json.loads(secrets_file.read_text())
+    except (json.JSONDecodeError, IOError):
+        return []
+
+
+def load_secret_for_reveal(auction_id, username):
+    """
+    Load secret data for specific auction
+    
+    Args:
+        auction_id: Auction ID to find secret for
+        username: Username to load secrets for
         
-        for bid in all_bids:
-            if bid["auction_id"] == auction_id:
-                return bid
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
+    Returns:
+        dict: Secret data or None if not found
+    """
+    all_secrets = load_all_secrets(username)
+    
+    for secret in all_secrets:
+        if secret.get("auction_id") == auction_id:
+            return secret
     
     return None
         

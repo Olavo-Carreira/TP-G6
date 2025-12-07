@@ -3,10 +3,15 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 import hashlib
 import json
 import os
+from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 def generate_keypair():
     """Generate RSA keypair"""
@@ -167,3 +172,197 @@ def decryprt_from_dest(encrypted_message, prvkey):
     
     except Exception:
         return None
+
+def get_user_data_dir(username):
+    """
+    Get user-specific data directory
+    
+    Creates directory structure: ~/.auction_system/<username>/
+    
+    Args:
+        username: Username (case-insensitive)
+        
+    Returns:
+        Path: Path to user directory
+    """
+    home = Path.home()
+    user_dir = home / '.auction_system' / username.lower()
+    user_dir.mkdir(parents=True, exist_ok=True)
+    return user_dir
+
+
+def derive_key_from_password(password, salt):
+    """
+    Derive encryption key from password using PBKDF2
+    
+    Args:
+        password: User password (string)
+        salt: Salt bytes (16 bytes)
+        
+    Returns:
+        bytes: Derived key (32 bytes for AES-256)
+    """
+    
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,  # 256 bits for AES-256
+        salt=salt,
+        iterations=100000,  # OWASP recommendation
+        backend=default_backend()
+    )
+    
+    return kdf.derive(password.encode('utf-8'))
+
+
+def encrypt_private_key_with_password(private_key, password):
+    """
+    Encrypt private key with password-derived AES key
+    
+    Args:
+        private_key: RSA private key object
+        password: User password (string)
+        
+    Returns:
+        dict: Encrypted data with salt, nonce, ciphertext, tag
+    """
+    # Generate random salt
+    salt = os.urandom(16)
+    
+    # Derive AES key from password
+    aes_key = derive_key_from_password(password, salt)
+    
+    # Serialize private key
+    priv_pem = serialize_key(private_key, is_private=True)
+    
+    # Encrypt with AES-GCM
+    nonce = os.urandom(12)
+    cipher = Cipher(
+        algorithms.AES(aes_key),
+        modes.GCM(nonce),
+        backend=default_backend()
+    )
+    encryptor = cipher.encryptor()
+    ciphertext = encryptor.update(priv_pem) + encryptor.finalize()
+    
+    return {
+        'salt': salt.hex(),
+        'nonce': nonce.hex(),
+        'ciphertext': ciphertext.hex(),
+        'tag': encryptor.tag.hex()
+    }
+
+
+def decrypt_private_key_with_password(encrypted_data, password):
+    """
+    Decrypt private key with password
+    
+    Args:
+        encrypted_data: Dict with salt, nonce, ciphertext, tag
+        password: User password (string)
+        
+    Returns:
+        tuple: (private_key, public_key) or None if wrong password
+    """
+    try:
+        # Parse encrypted data
+        salt = bytes.fromhex(encrypted_data['salt'])
+        nonce = bytes.fromhex(encrypted_data['nonce'])
+        ciphertext = bytes.fromhex(encrypted_data['ciphertext'])
+        tag = bytes.fromhex(encrypted_data['tag'])
+        
+        # Derive AES key from password
+        aes_key = derive_key_from_password(password, salt)
+        
+        # Decrypt with AES-GCM
+        cipher = Cipher(
+            algorithms.AES(aes_key),
+            modes.GCM(nonce, tag),
+            backend=default_backend()
+        )
+        decryptor = cipher.decryptor()
+        priv_pem = decryptor.update(ciphertext) + decryptor.finalize()
+        
+        # Deserialize private key
+        private_key = deserialize_key(priv_pem, is_private=True)
+        public_key = private_key.public_key()
+        
+        return private_key, public_key
+    
+    except Exception as e:
+        # Decryption failed = wrong password
+        logger.debug(f"Decryption failed: {e}")
+        return None
+
+
+def save_keypair(username, private_key, public_key, password):
+    """
+    Save keypair to disk with password protection (ALWAYS encrypted)
+    
+    Args:
+        username: Username
+        private_key: RSA private key object
+        public_key: RSA public key object
+        password: Password for encryption (REQUIRED)
+    """
+    user_dir = get_user_data_dir(username)
+    
+    # Encrypt with password
+    encrypted_data = encrypt_private_key_with_password(private_key, password)
+    
+    secure_file = user_dir / 'keypair.json'
+    secure_file.write_text(json.dumps(encrypted_data, indent=2))
+    
+    try:
+        secure_file.chmod(0o600)
+    except Exception as e:
+        logger.warning(f"Could not set file permissions: {e}")
+    
+    logger.info(f"🔐 Encrypted keypair saved for {username}")
+
+
+def load_keypair(username, password):
+    """
+    Load keypair from disk with password (ALWAYS requires password)
+    
+    Args:
+        username: Username
+        password: Password (REQUIRED)
+        
+    Returns:
+        tuple: (private_key, public_key) or None if not found/wrong password
+    """
+    user_dir = get_user_data_dir(username)
+    secure_file = user_dir / 'keypair.json'
+    
+    if not secure_file.exists():
+        logger.debug(f"No saved keypair found for {username}")
+        return None
+    
+    try:
+        encrypted_data = json.loads(secure_file.read_text())
+        keys = decrypt_private_key_with_password(encrypted_data, password)
+        
+        if keys:
+            logger.info(f"🔐 Encrypted keypair loaded for {username}")
+        else:
+            logger.warning(f"❌ Wrong password for {username}")
+        
+        return keys
+    
+    except Exception as e:
+        logger.error(f"Error loading encrypted keypair: {e}")
+        return None
+
+
+def keypair_exists(username):
+    """
+    Check if keypair exists for user
+    
+    Args:
+        username: Username
+        
+    Returns:
+        bool: True if keypair exists
+    """
+    user_dir = get_user_data_dir(username)
+    return (user_dir / 'keypair.json').exists()
