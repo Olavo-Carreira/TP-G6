@@ -140,30 +140,24 @@ class AuctionAnnouncement:
         message = self.compute_hash()
 
         ring_valid = ring_verify(message, self.ring_signature, ring_public_keys)
-        print(f"🔍 DEBUG verify: Ring signature valid? {ring_valid}")
     
         if not ring_valid:
             return False
 
-        # TIAGO
         if server_public_key and self.timestamp_signature:
             timestamp_message = f"{self.timestamp_hash}:{self.timestamp}"
             try:
                 sig_bytes = bytes.fromhex(self.timestamp_signature)
                 if not verify_signature(timestamp_message, sig_bytes, server_public_key):
-                    print(f"🔍 DEBUG verify: Invalid server timestamp signature!")
                     return False
             except Exception as e:
-                print(f"🔍 DEBUG verify: Error verifying timestamp: {e}")
                 return False
         
         # Check timestamp not too far in the future
-        if self.timestamp > time.time() + 300: # Tolerance
-            print(f"🔍 DEBUG verify: Timestamp too far in the future!")
+        if self.timestamp > time.time() + 300: 
             return False
         
         if self.end_time <= self.start_time:
-            print(f"🔍 DEBUG verify: end_time <= start_time!")
             return False
         
         return True

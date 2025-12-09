@@ -69,7 +69,7 @@ def print_info(message):
 
 def print_auction_details(auction, status=None):
     print("\n" + "-"*60)
-    print(f"🏛️  Auction ID: {auction.auction_id}")
+    print(f"🏛️ Auction ID: {auction.auction_id}")
     print(f"📦 Item: {auction.item_description}")
     print(f"⏰ Start: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(auction.start_time))}")
     print(f"⏰ End: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(auction.end_time))}")
@@ -231,17 +231,8 @@ def print_divider(char="─", width=60):
     print(char * width)
 
 
-def get_password(prompt="Password", confirm=False):
-    """
-    Get password securely (hidden input)
-    
-    Args:
-        prompt: Prompt message
-        confirm: If True, ask for confirmation
-        
-    Returns:
-        str: Password
-    """
+def get_password(prompt="Password", confirm=False, check_length=True):
+    """Get password securely"""
     
     while True:
         password = getpass.getpass(f"🔐 {prompt}: ")
@@ -250,7 +241,7 @@ def get_password(prompt="Password", confirm=False):
             print_error("Password cannot be empty")
             continue
         
-        if len(password) < 6:
+        if check_length and len(password) < 6:
             print_warning("Password should be at least 6 characters")
             if not get_confirmation("Use this password anyway?"):
                 continue

@@ -135,7 +135,6 @@ class Bid:
         if not ring_verify(message, self.ring_signature, ring_public_keys):
             return False
         
-        # TIAGO
         if server_public_key and self.timestamp_signature:
             timestamp_message = f"{self.timestamp_hash}:{self.timestamp}"
             try:

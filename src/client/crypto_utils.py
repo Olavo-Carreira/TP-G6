@@ -174,17 +174,7 @@ def decryprt_from_dest(encrypted_message, prvkey):
         return None
 
 def get_user_data_dir(username):
-    """
-    Get user-specific data directory
-    
-    Creates directory structure: ~/.auction_system/<username>/
-    
-    Args:
-        username: Username (case-insensitive)
-        
-    Returns:
-        Path: Path to user directory
-    """
+    """Get user-specific data directory"""
     home = Path.home()
     user_dir = home / '.auction_system' / username.lower()
     user_dir.mkdir(parents=True, exist_ok=True)
@@ -192,22 +182,13 @@ def get_user_data_dir(username):
 
 
 def derive_key_from_password(password, salt):
-    """
-    Derive encryption key from password using PBKDF2
-    
-    Args:
-        password: User password (string)
-        salt: Salt bytes (16 bytes)
-        
-    Returns:
-        bytes: Derived key (32 bytes for AES-256)
-    """
+    """Derive encryption key from password using PBKDF2"""
     
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
-        length=32,  # 256 bits for AES-256
+        length=32, 
         salt=salt,
-        iterations=100000,  # OWASP recommendation
+        iterations=100000,  
         backend=default_backend()
     )
     
@@ -215,16 +196,7 @@ def derive_key_from_password(password, salt):
 
 
 def encrypt_private_key_with_password(private_key, password):
-    """
-    Encrypt private key with password-derived AES key
-    
-    Args:
-        private_key: RSA private key object
-        password: User password (string)
-        
-    Returns:
-        dict: Encrypted data with salt, nonce, ciphertext, tag
-    """
+    """Encrypt private key with password-derived AES key"""
     # Generate random salt
     salt = os.urandom(16)
     
@@ -253,16 +225,7 @@ def encrypt_private_key_with_password(private_key, password):
 
 
 def decrypt_private_key_with_password(encrypted_data, password):
-    """
-    Decrypt private key with password
-    
-    Args:
-        encrypted_data: Dict with salt, nonce, ciphertext, tag
-        password: User password (string)
-        
-    Returns:
-        tuple: (private_key, public_key) or None if wrong password
-    """
+    """Decrypt private key with password"""
     try:
         # Parse encrypted data
         salt = bytes.fromhex(encrypted_data['salt'])
@@ -289,21 +252,11 @@ def decrypt_private_key_with_password(encrypted_data, password):
         return private_key, public_key
     
     except Exception as e:
-        # Decryption failed = wrong password
-        logger.debug(f"Decryption failed: {e}")
         return None
 
 
 def save_keypair(username, private_key, public_key, password):
-    """
-    Save keypair to disk with password protection (ALWAYS encrypted)
-    
-    Args:
-        username: Username
-        private_key: RSA private key object
-        public_key: RSA public key object
-        password: Password for encryption (REQUIRED)
-    """
+    """Save keypair to disk with password protection"""
     user_dir = get_user_data_dir(username)
     
     # Encrypt with password
@@ -317,20 +270,10 @@ def save_keypair(username, private_key, public_key, password):
     except Exception as e:
         logger.warning(f"Could not set file permissions: {e}")
     
-    logger.info(f"🔐 Encrypted keypair saved for {username}")
 
 
 def load_keypair(username, password):
-    """
-    Load keypair from disk with password (ALWAYS requires password)
-    
-    Args:
-        username: Username
-        password: Password (REQUIRED)
-        
-    Returns:
-        tuple: (private_key, public_key) or None if not found/wrong password
-    """
+    """Load keypair from disk with password"""
     user_dir = get_user_data_dir(username)
     secure_file = user_dir / 'keypair.json'
     
@@ -342,11 +285,6 @@ def load_keypair(username, password):
         encrypted_data = json.loads(secure_file.read_text())
         keys = decrypt_private_key_with_password(encrypted_data, password)
         
-        if keys:
-            logger.info(f"🔐 Encrypted keypair loaded for {username}")
-        else:
-            logger.warning(f"❌ Wrong password for {username}")
-        
         return keys
     
     except Exception as e:
@@ -355,14 +293,6 @@ def load_keypair(username, password):
 
 
 def keypair_exists(username):
-    """
-    Check if keypair exists for user
-    
-    Args:
-        username: Username
-        
-    Returns:
-        bool: True if keypair exists
-    """
+    """Check if keypair exists for user"""
     user_dir = get_user_data_dir(username)
     return (user_dir / 'keypair.json').exists()

@@ -40,9 +40,7 @@ class WinnerDetermination:
     
     @staticmethod
     def determine_winner(auction_id, reserve_price, all_bids: List):
-        """
-        Determine auction winner
-        """
+        """Determine auction winner"""
         
         # Filter valid bids (above reserve price)
         valid_bids = [
@@ -58,7 +56,7 @@ class WinnerDetermination:
         else:
             valid_bids_sorted = sorted(
                 valid_bids,
-                key=lambda b: (-b.bid_value, b.timestamp)  # - for desc, without - for asc
+                key=lambda b: (-b.bid_value, b.timestamp)
             )
             
             winner_bid = valid_bids_sorted[0]
@@ -69,7 +67,7 @@ class WinnerDetermination:
             ]
             
             if len(tied_bids) > 1:
-                print(f"\n⚠️  TIE DETECTED: {len(tied_bids)} bids with value {winner_bid.bid_value}€")
+                print(f"\nTIE DETECTED: {len(tied_bids)} bids with value {winner_bid.bid_value}€")
                 print(f"   Winner chosen by timestamp (earliest): {winner_bid.timestamp}")
                 for i, bid in enumerate(sorted(tied_bids, key=lambda b: b.timestamp)):
                     print(f"   #{i+1}: Bid {bid.bid_id[:8]}... @ timestamp {bid.timestamp}")

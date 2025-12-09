@@ -26,7 +26,6 @@ class Block:
         
         return hashlib.sha256(block_string.encode()).hexdigest()
     
-    # TODO maybe later add something cooler instead of starting with 0
     
     def mine_block(self, difficulty):
         """Proof-of-Work: find the nonce that makes hash start with 0 times the difficulty"""

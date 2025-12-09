@@ -7,6 +7,8 @@ import logging
 import hashlib
 import traceback
 
+from pathlib import Path
+
 from blockchain import Blockchain
 from network import start_p2p_server, connect_to_peer, send_message, broadcast_to_peers, receive_message
 from crypto_utils import generate_keypair, serialize_key, deserialize_key, decryprt_from_dest, encrypt_for_dest, load_keypair, save_keypair, keypair_exists
@@ -39,18 +41,17 @@ class AuctionNode:
         # Load or create keypair 
         
         if keypair_exists(username):
-            # Existing user - need password
+            # Existing user 
             if not password:
                 print_error(f"User {username} requires password")
                 
                 max_attempts = 3
                 for attempt in range(max_attempts):
-                    password = get_password("Enter your password")
+                    password = get_password("Enter your password", check_length=False)
                     existing_keys = load_keypair(username, password)
                     
                     if existing_keys:
                         self.private_key, self.public_key = existing_keys
-                        logger.info(f"🔄 Restored identity for {username}")
                         break
                     else:
                         print_error(f"❌ Wrong password! ({max_attempts - attempt - 1} attempts remaining)")
@@ -66,7 +67,6 @@ class AuctionNode:
                     raise Exception("Wrong password!")
                 
                 self.private_key, self.public_key = existing_keys
-                logger.info(f"🔄 Restored identity for {username}")
         
         else:
             # New user - create with password
@@ -76,10 +76,18 @@ class AuctionNode:
             
             self.private_key, self.public_key = generate_keypair()
             save_keypair(username, self.private_key, self.public_key, password)
-            logger.info(f"🆕🔐 New identity created for {username}")
+            logger.info(f"New identity created for {username}")
         
         # Local blockchain
-        self.blockchain = Blockchain(server_public_key = None)
+        blockchain_file = self._get_blockchain_file()
+        self.blockchain = Blockchain(server_public_key=None)
+        
+        if os.path.exists(blockchain_file):
+            try:
+                self.blockchain.load_from_disk(blockchain_file)
+                print_success(f"Loaded blockchain from disk")
+            except Exception as e:
+                logger.error(f"Error loading blockchain: {e}")
         
         # Auction Manager (complete integration!)
         self.auction_manager = AuctionManager(self.blockchain)
@@ -92,16 +100,15 @@ class AuctionNode:
         self.ring_keys = []
         
         # Local secrets (reserve prices and bid nonces)
-        self.my_secrets = {}  # {auction_id: {'reserve_nonce': ..., 'type': 'seller'}}
+        self.my_secrets = {}  
         
         self.processed_bid_ids = set()
         
-        self.time_offset = 0 # Possible solution for the future issue in alice
+        self.time_offset = 0 
         
         self.server_public_key = None
         
-        # TIAGO
-        self.my_won_auctions = set()  # {auction_id}
+        self.my_won_auctions = set() 
         
         logger.info(f"Node {username} created on port {self.p2p_port}")
     
@@ -189,11 +196,6 @@ class AuctionNode:
                 # Bidder secret
                 self.my_secrets[f"bid_{secret['bid_id']}"] = secret
         
-        if saved_secrets:
-            print_success(f"📂 Loaded {len(saved_secrets)} saved secrets")
-            logger.info(f"Restored secrets: {len([s for s in saved_secrets if 'bid_id' not in s])} auctions, "
-                        f"{len([s for s in saved_secrets if 'bid_id' in s])} bids")
-            
         self.my_won_auctions = load_won_auctions(self.username)
         if self.my_won_auctions:
             print_success(f"Loaded {len(self.my_won_auctions)} won auctions ")
@@ -319,12 +321,6 @@ class AuctionNode:
                 local_time = local_before + (rtt/2)
                 
                 self.time_offset = server_time - local_time
-                
-                if abs(self.time_offset) > 1: 
-                    logger.warning(f"Clock desynchronized: {self.time_offset:.2f}s difference")
-                else:
-                    logger.info(f"Time synchronized (offset: {self.time_offset:.3f}s)")
-                
                 return True
             
         except Exception as e:
@@ -376,12 +372,10 @@ class AuctionNode:
     def start_p2p_server(self):
         """Start P2P server"""
         start_p2p_server(self.p2p_port, self.handle_p2p_message)
-        logger.info(f"P2P server on port {self.p2p_port}")
     
     def discover_and_connect_peers(self):
         """Discover and connect to peers"""
         peers = self.get_peers_from_server()
-        logger.info(f"Discovered {len(peers)} peers")
         
         for peer in peers:
             peer_socket = connect_to_peer(peer['ip'], peer['port'])
@@ -402,7 +396,6 @@ class AuctionNode:
             self.peer_sockets.append(sender_socket)
         
         msg_type = message.get('type')
-        logger.debug(f"Received: {msg_type}")
         
         try:
             if msg_type == 'ENCRYPTED_REVEAL':
@@ -433,9 +426,6 @@ class AuctionNode:
                 self.receive_auction_result(message)
                 return
             
-            # Note: IDENTITY_REVEAL removed - only ENCRYPTED_REVEAL should be used
-            # to maintain selective identity disclosure
-            
             else:
                 logger.warning(f"Unknown type: {msg_type}")
         
@@ -447,11 +437,11 @@ class AuctionNode:
     def sync_blockchain(self):
         """Synchronize blockchain with peers"""
         if not self.peer_sockets:
-            logger.info("No peers, using local blockchain")
             return
         
         request = {'type': 'REQUEST_BLOCKCHAIN'}
         send_message(self.peer_sockets[0], request)
+        self.send_blockchain(self.peer_sockets[0])
     
     def send_blockchain(self, peer_socket):
         """Send blockchain to peer"""
@@ -472,9 +462,8 @@ class AuctionNode:
         
         if self.blockchain.replace_chain(received_chain):
             logger.info("Blockchain updated")
-
+            self.save_blockchain()
             self.update_ring_keys()
-            # Rebuild auction manager from blockchain
             self.rebuild_auction_manager_from_blockchain()
         else:
             logger.info("Local blockchain already up to date")
@@ -488,7 +477,7 @@ class AuctionNode:
         try:
             self.blockchain.add_block(new_block)
             logger.info(f"Block #{new_block.index} added")
-            
+            self.save_blockchain()
             for tx in new_block.transactions:
                 if tx.get('type') == 'auction_result':
                     auction_id = tx.get('data', {}).get('auction_id')
@@ -511,10 +500,6 @@ class AuctionNode:
         try:
             data = message.get('data')
             announcement = AuctionAnnouncement.from_dict(data)
-            
-            print(f"🔍 DEBUG: Announcement received - ID: {announcement.auction_id}")
-            print(f"🔍 DEBUG: Available ring keys: {len(self.ring_keys)}")
-            
             # Verify validity
             if self.auction_manager.verify_auction_announcement(announcement):
                 # Add to manager
@@ -540,10 +525,6 @@ class AuctionNode:
                     'data': announcement.to_dict(),
                     'timestamp': announcement.timestamp
                 })
-                
-                logger.debug(f"🔍 DEBUG: ANNOUNCEMENT added to local pool")
-                logger.debug(f"   Pool size now: {len(self.blockchain.pending_transactions)}")
-                logger.debug(f"   Auction ID: {announcement.auction_id}")
             else:
                 logger.warning("Invalid announcement received")
         
@@ -575,9 +556,6 @@ class AuctionNode:
                     'timestamp': bid.timestamp
                 })
                 
-                logger.debug(f"🔍 DEBUG: BID added to local pool")
-                logger.debug(f"   Pool size now: {len(self.blockchain.pending_transactions)}")
-                logger.debug(f"   Bid ID: {bid.bid_id}")
             else:
                 logger.warning("Invalid bid received")
                         
@@ -586,9 +564,6 @@ class AuctionNode:
     
     def receive_auction_result(self, message):
         """Receive auction result"""
-        
-        print(f"🔍 DEBUG: receive_auction_result called")
-        print(f"🔍 DEBUG: Message data: {message.get('data', {}).get('auction_id')}")
     
         try:
             data = message.get('data')
@@ -615,7 +590,6 @@ class AuctionNode:
                     data_str = f"{auction_id}:{bid_value}:{bid_nonce}"
                     my_commitment = hashlib.sha256(data_str.encode('utf-8')).hexdigest()
                     
-                    print(f"DEBUG: Comparing commits")
                     print(f"Winning: {winning_commitment}")
                     print(f"Mine: {my_commitment}")
                     
@@ -642,10 +616,9 @@ class AuctionNode:
             decrypted = decryprt_from_dest(message, self.private_key)
             
             if decrypted is None:
-                logger.debug("Encrypted_Reveal not for me")
                 return
             else:
-                logger.info(f"🔓 CONSEGUI DESENCRIPTAR! (sou o destinatário correto)")
+                logger.info(f"(sou o destinatário correto)")
             
             reveal = IdentityReveal.from_dict(decrypted)
             auction_id = reveal.auction_id
@@ -662,15 +635,14 @@ class AuctionNode:
                         for sk, s in self.my_secrets.items():
                             pass
                         is_for_me = True
-                        logger.info(f"✅ [{self.username}] Sou seller - aceito reveal do winner")
+                        logger.info(f"[{self.username}] Sou seller - aceito reveal do winner")
                 
                 # Case 2: Im winner and target is reserve_price commit 
                 if auction and auction.reserve_price_commitment == target_commitment:
-                    # Verificar se fiz bid neste auction
                     for secret_key, secret in self.my_secrets.items():
                         if secret.get('type') == 'bidder' and secret.get('auction_id') == auction_id:
                             is_for_me = True
-                            logger.info(f"✅ [{self.username}] Sou winner - aceito reveal do seller")
+                            logger.info(f"[{self.username}] Sou winner - aceito reveal do seller")
                             break
                 
                 # Case 3: Im winner and target is my bid_commitment 
@@ -683,9 +655,6 @@ class AuctionNode:
                 if not is_for_me:
                     logger.info(f"❌ [{self.username}] Reveal não era para mim (commitment diferente)")
                     return
-            
-            # Guardar reveal
-            logger.info("Received private identity reveal")
             
             if auction_id not in self.auction_manager.identity_manager.identity_reveals:
                 self.auction_manager.identity_manager.identity_reveals[auction_id] = {}
@@ -700,7 +669,6 @@ class AuctionNode:
                 print_success(f"Winner revealed identity")
                 logger.info(f"Auction: {auction_id}")
 
-            # Mostrar info se ambos revelaram
             if self.auction_manager.identity_manager.are_identities_revealed(auction_id):
                 self._show_complete_auction_info(auction_id)
         
@@ -721,11 +689,11 @@ class AuctionNode:
         winner_username = self._get_username_from_pubkey(winner_reveal.public_key)
         
         print("\n" + "="*70)
-        print_success("🎉 AUCTION COMPLETED - BOTH IDENTITIES REVEALED")
+        print_success(" AUCTION COMPLETED - BOTH IDENTITIES REVEALED")
         print("="*70)
-        print(f"   🏛️  Auction ID: {auction_id}")
-        print(f"   👤 Seller: {seller_username}")
-        print(f"   🏆 Winner: {winner_username}")
+        print(f"Auction ID: {auction_id}")
+        print(f"Seller: {seller_username}")
+        print(f"Winner: {winner_username}")
         print("="*70)
         print("="*70 + "\n")
     
@@ -886,8 +854,6 @@ class AuctionNode:
                     print_error(f"Bid lower than current winner")
                     return False
             
-            print_progress("Submitting bid...", 1)
-            
             try:
                 trusted_time_data = self.get_trusted_time(f"{auction_id}{bid_amount}{self.username}")
             except Exception as e:
@@ -917,7 +883,6 @@ class AuctionNode:
             }
             self.processed_bid_ids.add(bid.bid_id)
             
-            # ✅ UPDATED: Pass username
             save_secret_locally({
                 'bid_id': bid.bid_id,
                 'bid_nonce': bid.bid_nonce,
@@ -997,7 +962,6 @@ class AuctionNode:
         
         try:
             print_progress("Revealing your identity", 1)
-            print("🔍 DEBUG: Creating reveal...")
             reveal = self.auction_manager.identity_manager.reveal_winner_identity(
                 auction_id = auction_id,
                 winner_public_key = self.public_key,
@@ -1006,15 +970,12 @@ class AuctionNode:
             auction = self.auction_manager.get_auction(auction_id)
             reveal_data = reveal.to_dict()
             reveal_data['target_commitment'] = auction.reserve_price_commitment
-            print("✅ DEBUG: Reveal created")
-            print(f"\n🔍 DEBUG: Available ring keys: {len(self.ring_keys)}")
             
             sent_count = 0
             
             my_pubkey_bytes = serialize_key(self.public_key, is_private=False)
             
             for i, ring_key in enumerate(self.ring_keys):
-                print(f"🔍 DEBUG: Trying to encrypt for key {i+1}/{len(self.ring_keys)}...")
                 try:
                     ring_key_bytes = serialize_key(ring_key, is_private=False)
                     
@@ -1025,28 +986,40 @@ class AuctionNode:
                     encrypted_package['type'] = 'ENCRYPTED_REVEAL'
                     encrypted_package['timestamp'] = reveal.reveal_timestamp
                     encrypted_msg = encrypted_package
-                    print(f"✅ DEBUG: Encryption {i+1} successful")
                     
                     broadcast_to_peers(self.peer_sockets, encrypted_msg)
                     sent_count += 1
                 
                 except Exception as e:
-                    print(f"❌ DEBUG: Encryption {i+1} FAILED: {e}")
                     continue
             
             print()
-            print_success(f"✅ Identity revealed!")
-            print_info(f"   📤 Encrypted messages sent: {sent_count}")
-            print_info(f"   🔐 Only seller can decrypt and see who you are")
+            print_success(f"Identity revealed!")
+            print_info(f"Encrypted messages sent: {sent_count}")
             print()
         
         except Exception as e:
             logger.error(f"Error revealing as winner: {e}")
+            
+    def _get_blockchain_file(self):
+        """Get blockchain file path for user"""
+        
+        user_dir = Path.home() / '.auction_system' / self.username.lower()
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return str(user_dir / 'blockchain.json')
+    
+    def save_blockchain(self):
+        """Save blockchain to disk"""
+        
+        try:
+            blockchain_file = self._get_blockchain_file()
+            self.blockchain.save_to_disk(blockchain_file)
+            logger.debug(f"Blockchain saved")
+        except Exception as e:
+            logger.error(f"Error saving to blockchain: {e}")
         
     def close_and_finalize_auction(self, auction_id):
-        """
-        Close and finalize auction (seller only)
-        """
+        """Close and finalize auction"""
         try:
             if auction_id not in self.my_secrets:
                 return
@@ -1103,7 +1076,6 @@ class AuctionNode:
                 my_pubkey_bytes = serialize_key(self.public_key, is_private=False)
                 
                 for i, ring_key in enumerate(self.ring_keys):
-                    print(f"🔍 DEBUG: Trying to encrypt for key {i+1}/{len(self.ring_keys)}...")
                     try:
                         ring_key_bytes = serialize_key(ring_key, is_private=False)
 
@@ -1115,28 +1087,23 @@ class AuctionNode:
                         encrypted_package['timestamp'] = reveal.reveal_timestamp
                         encrypted_msg = encrypted_package
                         
-                        print(f"✅ DEBUG: Encryption {i+1} successful")
                         broadcast_to_peers(self.peer_sockets, encrypted_msg)
                         sent_count += 1
                     
                     except Exception as e:
-                        print(f"❌ DEBUG: Encryption {i+1} FAILED: {e}")
                         failed_count += 1
                         continue
             
                 print()
-                print_success(f"✅ Identity revealed!")
-                print_info(f"   📤 Encrypted messages sent: {sent_count}")
-                print_info(f"   🔐 Only winner can decrypt and see who you are")
-                print_info(f"   ⏳ Waiting for winner reveal...")
+                print_success(f"Identity revealed!")
+                print_info(f"Encrypted messages sent: {sent_count}")
+                print_info(f"Waiting for winner reveal...")
                 
-                if failed_count > 0:
-                    logger.debug(f"   ⚠️  {failed_count} ring keys failed encryption")
             
             else:
-                print_warning("❌ No winner")
-                print_info(f"   Reserve price: {secret['reserve_price']}€")
-                print_info(f"   No bid reached reserve price")
+                print_warning("No winner")
+                print_info(f"Reserve price: {secret['reserve_price']}€")
+                print_info(f"No bid reached reserve price")
         
         except Exception as e:
             print_error(f"Error closing auction: {e}")
@@ -1159,24 +1126,15 @@ class AuctionNode:
     def mine_block(self):
         """Mine block with pending transactions"""
         
-        logger.debug(f"🔍 DEBUG MINE: Pool has {len(self.blockchain.pending_transactions)} transactions")
         for tx in self.blockchain.pending_transactions:
             logger.debug(f"   - {tx.get('type')}")
 
         if not self.blockchain.pending_transactions:
-            logger.debug("No pending transactions to mine")
             return None
         
-        logger.info(f"Mining block with {len(self.blockchain.pending_transactions)} transactions")
-        logger.debug(f"Previous hash: {self.blockchain.get_last_block_hash()[:16]}...")
-        logger.debug(f"Chain length before: {len(self.blockchain.chain)}")
-        
         new_block = self.blockchain.mine_pending_transactions()
-        
+        self.save_blockchain()
         if new_block:
-            logger.info(f"Block #{new_block.index} mined!")
-            logger.debug(f"New hash: {new_block.hash[:16]}...")
-            logger.debug(f"Chain length after: {len(self.blockchain.chain)}")
             
             # Broadcast to peers
             message = {
@@ -1184,7 +1142,6 @@ class AuctionNode:
                 'block': new_block.to_dict()
             }
             broadcast_to_peers(self.peer_sockets, message)
-            logger.debug(f"Block sent to {len(self.peer_sockets)} peers")
         
         return new_block
     
@@ -1236,9 +1193,8 @@ class AuctionNode:
             dummy_priv, dummy_pub = generate_keypair()
             dummy_pub_bytes = serialize_key(dummy_pub, is_private=False)
             existing_keys.append(dummy_pub_bytes)
-            logger.warning(f"⚠️  Generated dummy key for ring (total: {len(existing_keys)}) - Ring too small!")
+            logger.warning(f"Generated dummy key for ring (total: {len(existing_keys)}) - Ring too small!")
         
-        logger.debug(f"Ring for signing: {len(existing_keys)} keys")
         return existing_keys
 
     def _get_username_from_pubkey(self, public_key_str):
@@ -1321,15 +1277,10 @@ class AuctionNode:
 # ========== CLI MENU ====================
 
 def run_cli(node):
-    """
-    Executar interface de linha de comandos
-    
-    Args:
-        node: Instância de AuctionNode
-    """
+    """Execute cli"""
     while True:
         try:
-            # Limpar ecrã e mostrar status
+            # Clean screen
             clear_screen()
             
             node.cleanup_dead_sockets()
@@ -1376,7 +1327,7 @@ def run_cli(node):
             elif choice == 9:
                 cli_view_peers(node)
             elif choice == 10:
-                continue  # Apenas refresh
+                continue  
             elif choice == 11:
                 if get_confirmation("Are you sure you want to exit?"):
                     print_info("Closing node...")
@@ -1558,14 +1509,14 @@ def cli_view_won_auctions(node):
                 break
         
         print("-"*60)
-        print(f"🏛️  Auction ID: {auction_id[:16]}...")
-        print(f"🏆 Item: {auction.item_description}")
+        print(f"Auction ID: {auction_id[:16]}...")
+        print(f"Item: {auction.item_description}")
         
         if my_winning_bid:
             print(f"💰 My winning bid: {my_winning_bid['bid_value']}€")
         
-        print(f"📅 Start: {format_timestamp(auction.start_time)}")
-        print(f"⏰ End: {format_timestamp(auction.end_time)}")
+        print(f"Start: {format_timestamp(auction.start_time)}")
+        print(f"End: {format_timestamp(auction.end_time)}")
         
         print("-"*60)
         print()

@@ -9,12 +9,9 @@ import struct
 BUFFER_SIZE = 4096
 TIMEOUT = 10
 
-# ======== Auxiliary I/O functions ========
 
 def recvall(sock, n):
-    """
-    Read exactly n bytes from socket (or return None if connection closes).
-    """
+    """Read exactly n bytes from socket """
     data = b''
     while len(data) < n:
         chunk = sock.recv(n - len(data))
@@ -23,7 +20,6 @@ def recvall(sock, n):
         data += chunk
     return data
 
-# ======== Server ========
 
 def accept_connections(server_socket, message_handler):
     """Accept new connections"""
@@ -80,9 +76,6 @@ def handle_client(client_socket, address, message_handler):
         print(f"Error handling client {address}: {e}")
     finally:
         client_socket.close()
-        print(f"Connection closed with {address}")
-
-# ======== Client ========
 
 def connect_to_peer(ip, port):
     """Connect to another P2P node"""
@@ -143,18 +136,12 @@ def receive_message(peer_socket):
 def broadcast_to_peers(peer_sockets, message_dict):
     """Send message to all connected peers"""
     
-    print(f"DEBUG broadcast: Sending to {len(peer_sockets)} peers")
-    
     failed_peers = []
     
     for i, peer_socket in enumerate(peer_sockets):
-        print(f"DEBUG: Trying to send to peer {i}...")
 
         if not send_message(peer_socket, message_dict):
-            print(f"DEBUG: FAILED peer {i}")
             failed_peers.append(peer_socket)
-        else:
-            print(f"DEBUG: SUCCESS peer {i}")
     for failed in failed_peers:
         try:
             failed.close()

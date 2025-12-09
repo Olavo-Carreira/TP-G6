@@ -64,7 +64,6 @@ class IdentityRevealManager:
     
     def __init__ (self):
         self.identity_reveals: Dict[str, Dict[str, IdentityReveal]] = {}
-        # auction_id -> {seller : IdentityReveal, winner : IdentityReveal}
         
     def reveal_seller_identity(self, auction_id, seller_public_key):
         """Reveal seller identity"""
