@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import time
 import sys
 import os
+import ssl
 
 # Adicionar path para importar crypto_utils
 client_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'client')
@@ -11,17 +12,13 @@ from crypto_utils import generate_keypair, sign_data, serialize_key
 
 app = Flask(__name__)
 
-# ========== STORAGE EM MEMÓRIA ==========
-peers = {}           # {peer_id: {'ip': ..., 'port': ..., 'last_seen': ...}}
-registered_users = {} # {username: public_key_bytes}
-timestamps = []      # Lista de timestamps emitidos
-
-# ========== CHAVES DO SERVIDOR (para assinar timestamps) ==========
+peers = {}           
+registered_users = {}
+timestamps = []      
 SERVER_PRIVATE_KEY, SERVER_PUBLIC_KEY = generate_keypair()
 SERVER_PUBLIC_KEY_BYTES = serialize_key(SERVER_PUBLIC_KEY, is_private=False)
 
 
-# ========== ENDPOINTS ==========
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -31,10 +28,7 @@ def health():
 
 @app.route('/register', methods=['POST'])
 def register_user():
-    """
-    Registar user no sistema
-    Body: {'username': 'Alice', 'public_key': '...'}
-    """
+    """Register user in system"""
     data = request.json
     username = data.get('username')
     public_key = data.get('public_key')
@@ -84,9 +78,7 @@ def lookup_pubkey():
 
 @app.route('/users/public_keys', methods=['GET'])
 def get_public_keys():
-    """
-    Obter todas as chaves públicas (para ring signatures)
-    """
+    """Obtain all public keys"""
     return jsonify({
         'public_keys': list(registered_users.values()),
         'count': len(registered_users)
@@ -95,10 +87,7 @@ def get_public_keys():
 
 @app.route('/peers/announce', methods=['POST'])
 def announce_peer():
-    """
-    Peer anuncia presença
-    Body: {'peer_id': 'Alice', 'port': 8000}
-    """
+    """Peer anuncia presença"""
     data = request.json
     peer_id = data.get('peer_id')
     port = data.get('port')
@@ -120,13 +109,11 @@ def announce_peer():
 
 @app.route('/peers/list', methods=['GET'])
 def list_peers():
-    """
-    Obter lista de peers ativos (últimos 5 minutos)
-    """
+    """Obtain list of active peers"""
     now = time.time()
     active_peers = {
         pid: info for pid, info in peers.items()
-        if now - info['last_seen'] < 300  # 5 minutos
+        if now - info['last_seen'] < 300  
     }
     
     return jsonify({
@@ -137,25 +124,21 @@ def list_peers():
 
 @app.route('/timestamp', methods=['POST'])
 def timestamp_service():
-    """
-    Trusted timestamp service
-    Body: {'hash': 'abc123...'}
-    Returns: {'timestamp': ..., 'signature': ..., 'server_pubkey': ...}
-    """
+    """Trusted timestamp service"""
     data = request.json
     data_hash = data.get('hash')
     
     if not data_hash:
         return jsonify({'error': 'hash obrigatório'}), 400
     
-    # Criar timestamp
+    # Create timestamp
     ts = time.time()
     
-    # Assinar (hash + timestamp)
+    # Sign
     message = f"{data_hash}:{ts}"
     signature = sign_data(message, SERVER_PRIVATE_KEY)
     
-    # Guardar histórico
+    # Store
     timestamps.append({
         'hash': data_hash,
         'timestamp': ts,
@@ -171,13 +154,9 @@ def timestamp_service():
 
 @app.route('/timestamp/verify', methods=['POST'])
 def verify_timestamp():
-    """
-    Verificar se timestamp foi emitido pelo servidor
-    Body: {'hash': '...', 'timestamp': ..., 'signature': '...'}
-    """
+    """Verify if timestamp was issued by server"""
     data = request.json
     
-    # Procurar no histórico
     record = next(
         (t for t in timestamps 
         if t['hash'] == data.get('hash') and t['timestamp'] == data.get('timestamp')),
@@ -192,12 +171,12 @@ def verify_timestamp():
 
 @app.route('/stats', methods=['GET'])
 def stats():
-    """Estatísticas do servidor"""
+    """Server stats"""
     return jsonify({
         'registered_users': len(registered_users),
         'active_peers': len([p for p in peers.values() if time.time() - p['last_seen'] < 300]),
         'timestamps_issued': len(timestamps),
-        'uptime': time.time()  # Simplificado
+        'uptime': time.time()  
     })
     
 
@@ -218,9 +197,21 @@ if __name__ == '__main__':
     print(f"  - GET  /stats")
     print("=" * 50)
     
-    # Iniciar servidor
+    
+    cert_file = 'server_cert.pem'
+    key_file = 'server_key.pem'
+    
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(cert_file, key_file)
+        ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+    else:
+        ssl_context = None
+        print("ERRO: TLS DESATIVADO")
+    
     app.run(
-        host='0.0.0.0',  # Escuta em todas as interfaces
+        host='0.0.0.0',  
         port=5001,
-        debug=True
+        debug=True,
+        ssl_context = ssl_context
     )

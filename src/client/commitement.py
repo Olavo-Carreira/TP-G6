@@ -37,13 +37,7 @@ def verify_commitment(commitment_hash, value, nonce, auction_id):
     return recomputed_hash == commitment_hash   
 
 def save_secret_locally(secret_data, username):
-    """
-    Save secret data for specific user
-    
-    Args:
-        secret_data: Dictionary with secret information
-        username: Username to save secrets for
-    """
+    """Save secret data for specific user"""
     # Get user directory
     user_dir = Path.home() / '.auction_system' / username.lower()
     user_dir.mkdir(parents=True, exist_ok=True)
@@ -67,15 +61,7 @@ def save_secret_locally(secret_data, username):
 
 
 def load_all_secrets(username):
-    """
-    Load all secrets for user
-    
-    Args:
-        username: Username to load secrets for
-        
-    Returns:
-        list: List of secret dictionaries
-    """
+    """Load all secrets for user"""
     secrets_file = Path.home() / '.auction_system' / username.lower() / 'secrets.json'
     
     if not secrets_file.exists():
@@ -88,16 +74,7 @@ def load_all_secrets(username):
 
 
 def load_secret_for_reveal(auction_id, username):
-    """
-    Load secret data for specific auction
-    
-    Args:
-        auction_id: Auction ID to find secret for
-        username: Username to load secrets for
-        
-    Returns:
-        dict: Secret data or None if not found
-    """
+    """Load secret data for specific auction"""
     all_secrets = load_all_secrets(username)
     
     for secret in all_secrets:
@@ -105,6 +82,39 @@ def load_secret_for_reveal(auction_id, username):
             return secret
     
     return None
+
+def save_won_auction(auction_id, username):
+    """Save won auction"""
+    user_dir = Path.home() / '.auction_system' / username.lower()
+    user_dir.mkdir(parents = True, exist_ok = True)
+    
+    won_file = user_dir / 'won_auctions.json'
+    
+    try:
+        if won_file.exists():
+            existing = json.loads(won_file.read_text())
+        else:
+            existing = []
+    except (json.JSONDecodeError, IOError):
+        existing = []
+    
+    if auction_id not in existing:
+        existing.append(auction_id)
+    
+    won_file.write_text(json.dumps(existing, indent=2))
+    
+def load_won_auctions(username):
+    """Load won auctions"""
+    won_file = Path.home() / '.auction_system' / username.lower() / 'won_auctions.json'
+    
+    if not won_file.exists():
+        return set()
+    
+    try:
+        data = json.loads(won_file.read_text())
+        return set(data)
+    except (json.JSONDecodeError, IOError):
+        return set()
         
 def serialize_commitment(commitment_data):
     """Convert commitment to JSON (to save/send)"""

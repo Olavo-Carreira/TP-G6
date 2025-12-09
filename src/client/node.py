@@ -14,11 +14,10 @@ from manager import AuctionManager
 from announcement import AuctionAnnouncement
 from reveal import IdentityReveal
 from bid import Bid
-from commitement import save_secret_locally, load_secret_for_reveal, create_commitment, load_all_secrets
+from commitement import save_secret_locally, load_secret_for_reveal, create_commitment, load_all_secrets, save_won_auction, load_won_auctions
 from cli import *
 from status import AuctionStatus
 from block import Block
-
 
 # Configure logging
 logging.basicConfig(
@@ -32,11 +31,12 @@ logger = logging.getLogger(__name__)
 class AuctionNode:
     """P2P node to participate in anonymous auctions"""
     
-    def __init__(self, username, server_url='http://localhost:5001', p2p_port=None, password=None):
+    def __init__(self, username, server_url='https://localhost:5001', p2p_port=None, password=None):
         self.username = username
         self.server_url = server_url
+        self.verify_ssl = False
         
-        # Load or create keypair (ALWAYS with password)
+        # Load or create keypair 
         
         if keypair_exists(username):
             # Existing user - need password
@@ -192,7 +192,11 @@ class AuctionNode:
         if saved_secrets:
             print_success(f"📂 Loaded {len(saved_secrets)} saved secrets")
             logger.info(f"Restored secrets: {len([s for s in saved_secrets if 'bid_id' not in s])} auctions, "
-                       f"{len([s for s in saved_secrets if 'bid_id' in s])} bids")
+                        f"{len([s for s in saved_secrets if 'bid_id' in s])} bids")
+            
+        self.my_won_auctions = load_won_auctions(self.username)
+        if self.my_won_auctions:
+            print_success(f"Loaded {len(self.my_won_auctions)} won auctions ")
 
         print_success(f"Node {self.username} ready!")
         time.sleep(1)
@@ -206,7 +210,7 @@ class AuctionNode:
             response = requests.post(f'{self.server_url}/register', json = {
                 'username': self.username,
                 'public_key' : pub_key_str
-            })
+            }, verify = self.verify_ssl)
             
             if response.status_code == 200:
                 logger.info("Registered with central server")
@@ -239,7 +243,7 @@ class AuctionNode:
             response = requests.post(f'{self.server_url}/peers/announce', json={
                 'peer_id': self.username,
                 'port': self.p2p_port
-            })
+            }, verify=self.verify_ssl)
             
             if response.status_code == 200:
                 logger.info("Presence announced")
@@ -250,7 +254,7 @@ class AuctionNode:
     def get_peers_from_server(self):
         """Get peer list from server"""
         try:
-            response = requests.get(f'{self.server_url}/peers/list')
+            response = requests.get(f'{self.server_url}/peers/list', verify=self.verify_ssl)
             
             if response.status_code == 200:
                 data = response.json()
@@ -270,7 +274,7 @@ class AuctionNode:
         try:
             response = requests.post(f'{self.server_url}/timestamp', json = {
                 'hash' : data_hash
-            }, timeout = 5)
+            }, verify=self.verify_ssl)
             
             if response.status_code == 200:
                 return response.json()
@@ -304,7 +308,7 @@ class AuctionNode:
             # RTT
             local_before = time.time()
             
-            response = requests.get(f'{self.server_url}/health', timeout = 5)
+            response = requests.get(f'{self.server_url}/health', verify=self.verify_ssl)
             
             local_after = time.time()
             
@@ -338,7 +342,7 @@ class AuctionNode:
         try:
             response = requests.post(f'{self.server_url}/timestamp',
                                     json = {'hash': 'init'},
-                                    timeout = 5)
+                                    verify=self.verify_ssl)
             
             if response.status_code == 200:
                 data = response.json()
@@ -392,11 +396,7 @@ class AuctionNode:
                 listener_thread.start()
     
     def handle_p2p_message(self, message, sender_socket):
-        """
-        Central handler for P2P messages
-        
-        ✅ COMPLETE: Handles all message types
-        """
+        """Central handler for P2P messages"""
         # Add socket to list if new
         if sender_socket not in self.peer_sockets:
             self.peer_sockets.append(sender_socket)
@@ -472,7 +472,7 @@ class AuctionNode:
         
         if self.blockchain.replace_chain(received_chain):
             logger.info("Blockchain updated")
-            # ✅ UPDATE RING after sync
+
             self.update_ring_keys()
             # Rebuild auction manager from blockchain
             self.rebuild_auction_manager_from_blockchain()
@@ -480,11 +480,7 @@ class AuctionNode:
             logger.info("Local blockchain already up to date")
     
     def receive_new_block(self, message):
-        """
-        Receive new block from peer
-        
-        ✅ FIX: Removed duplicate processing - rebuild_auction_manager already processes everything
-        """
+        """ Receive new block from peer """
         
         block_data = message.get('block')
         new_block = Block.from_dict(block_data)
@@ -499,10 +495,8 @@ class AuctionNode:
                     if auction_id:
                         self.check_if_i_won(auction_id)
             
-            # ✅ UPDATE RING after receiving block (may have new registrations!)
             self.update_ring_keys()
-            
-            # ✅ REBUILD AUCTION MANAGER (already processes all transactions)
+
             self.rebuild_auction_manager_from_blockchain()
             
             
@@ -628,7 +622,6 @@ class AuctionNode:
                     if my_commitment == winning_commitment:
                         print_success("You won the auction")
                         
-                        # ✅ FIX: Use encrypted reveal instead of plain text
                         self._reveal_as_winner(auction_id, winning_commitment)
                         break
             else:
@@ -662,20 +655,16 @@ class AuctionNode:
                 is_for_me = False
                 auction = self.auction_manager.get_auction(auction_id)
                 
-                # Caso 1: Sou o SELLER e o target é o winner_bid_commitment
+                # Case 1: Im seller and target is winning_bid_commit 
                 if auction_id in self.my_secrets:
                     secret = self.my_secrets[auction_id]
                     if secret.get('type') == 'seller':
-                        # O winner está a revelar para mim
-                        # Target deve ser MEU reserve price commitment? NÃO!
-                        # Target é o BID COMMITMENT do winner
                         for sk, s in self.my_secrets.items():
-                            # Não preciso verificar - se sou seller, aceito qualquer reveal de winner
                             pass
                         is_for_me = True
                         logger.info(f"✅ [{self.username}] Sou seller - aceito reveal do winner")
                 
-                # Caso 2: Sou o WINNER e o target é o reserve_price_commitment
+                # Case 2: Im winner and target is reserve_price commit 
                 if auction and auction.reserve_price_commitment == target_commitment:
                     # Verificar se fiz bid neste auction
                     for secret_key, secret in self.my_secrets.items():
@@ -684,12 +673,11 @@ class AuctionNode:
                             logger.info(f"✅ [{self.username}] Sou winner - aceito reveal do seller")
                             break
                 
-                # Caso 3: Sou o WINNER e o target é MEU bid_commitment
+                # Case 3: Im winner and target is my bid_commitment 
                 for secret_key, secret in self.my_secrets.items():
                     if secret.get('type') == 'bidder' and secret.get('auction_id') == auction_id:
                         if secret.get('bid_commitment') == target_commitment:
                             is_for_me = True
-                            logger.info(f"✅ [{self.username}] Meu bid commitment match - aceito reveal")
                             break
                 
                 if not is_for_me:
@@ -742,11 +730,7 @@ class AuctionNode:
         print("="*70 + "\n")
     
     def process_transaction(self, tx):
-        """
-        Process transaction added to blockchain
-        
-        ⚠️  DEPRECATED: Use rebuild_auction_manager_from_blockchain() instead
-        """
+        """Process transaction added to blockchain"""
         tx_type = tx.get('type')
         
         if tx_type == 'AUCTION_ANNOUNCE':
@@ -755,14 +739,8 @@ class AuctionNode:
             self.receive_bid(tx)
     
     def rebuild_auction_manager_from_blockchain(self):
-        """
-        Rebuild auction manager from blockchain
+        """Rebuild auction manager from blockchain"""
         
-        Process all auctions and bids from blockchain to rebuild
-        auction manager state after synchronization.
-        
-        ✅ This method already processes all transactions, avoiding duplication
-        """
         logger.info("Rebuilding auction manager from blockchain...")
         
         # Process all blocks
@@ -859,7 +837,7 @@ class AuctionNode:
                 'reserve_price': reserve_price,
                 'type': 'seller'
             }
-            # ✅ UPDATED: Pass username
+            # Pass username
             save_secret_locally({
                 'auction_id': announcement.auction_id,
                 'reserve_nonce': reserve_nonce,
@@ -993,8 +971,8 @@ class AuctionNode:
                     secret_data.get('auction_id') == auction_id and
                     secret_data.get('bid_commitment') == winner_commitment):
                     
-                    # TIAGO
                     self.my_won_auctions.add(auction_id)
+                    save_won_auction(auction_id, self.username)
                     
                     print("\n" + "="*70)
                     print_success("🏆🏆🏆 CONGRATULATIONS! YOU WON THE AUCTION! 🏆🏆🏆")
@@ -1215,7 +1193,6 @@ class AuctionNode:
     def update_ring_keys(self):
         """Update ring keys list from blockchain"""
         try:
-            # ✅ ALWAYS ADD OWN KEY FIRST!
             self.ring_keys = [self.public_key]
             
             # Get all registered public keys from blockchain
@@ -1249,15 +1226,7 @@ class AuctionNode:
         }
     
     def get_ring_keys_for_signing(self):
-        """
-        Get ring keys for signing (generates dummy keys if needed)
-        
-        Ring signatures need at least 3 keys.
-        If not enough keys, generates dummy keys.
-        
-        Returns:
-            list: List of serialized public keys
-        """
+        """Get ring keys for signing (generates dummy keys if needed)"""
         # Serialize all ring keys (already includes own key!)
         existing_keys = [serialize_key(key, is_private=False) for key in self.ring_keys]
         
@@ -1279,7 +1248,7 @@ class AuctionNode:
             response = requests.post(
                 f'{self.server_url}/lookup_username',
                 json = {'public_key': public_key_str},
-                timeout = 2
+                verify=self.verify_ssl
             )
             
             if response.status_code == 200:
@@ -1298,7 +1267,7 @@ class AuctionNode:
             response = requests.post(
                 f'{self.server_url}/lookup_pubkey',
                 json = {'username':username},
-                timeout = 2
+                verify=self.verify_ssl
             )
             
             if response.status_code == 200:
