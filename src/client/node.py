@@ -6,6 +6,7 @@ import json
 import logging
 import hashlib
 import traceback
+import os
 
 from pathlib import Path
 
@@ -91,6 +92,7 @@ class AuctionNode:
         
         # Auction Manager (complete integration!)
         self.auction_manager = AuctionManager(self.blockchain)
+        self.auction_manager.load_from_blockchain(self.blockchain)
         
         # P2P networking
         self.p2p_port = p2p_port or self._find_free_port()
@@ -798,7 +800,11 @@ class AuctionNode:
                 timestamp_signature = trusted_time_data['signature'],
                 timestamp_hash = trusted_time_data['hash']
             )
-            
+            if len(self.blockchain.pending_transactions) >= 1:
+                self.blockchain.mine_pending_transactions()
+                blockchain_file = self._get_blockchain_file()
+                self.blockchain.save_to_disk(blockchain_file)
+                logger.info("Auction persisted to blockchain")
             # Save reserve nonce locally
             self.my_secrets[announcement.auction_id] = {
                 'reserve_nonce': reserve_nonce,
@@ -872,6 +878,11 @@ class AuctionNode:
                 timestamp_signature = trusted_time_data['signature'],
                 timestamp_hash = trusted_time_data['hash']
             )
+            if len(self.blockchain.pending_transactions) >= 1:  # Mine every 1 bids
+                self.blockchain.mine_pending_transactions()
+                blockchain_file = self._get_blockchain_file()
+                self.blockchain.save_to_disk(blockchain_file)
+                logger.info("Bids persisted to blockchain")
             
             # Save bid nonce locally
             self.my_secrets[f"bid_{bid.bid_id}"] = {
@@ -1093,6 +1104,12 @@ class AuctionNode:
                     except Exception as e:
                         failed_count += 1
                         continue
+                    
+                if len(self.blockchain.pending_transactions) >= 1:
+                    self.blockchain.mine_pending_transactions()
+                    blockchain_file = self._get_blockchain_file()
+                    self.blockchain.save_to_disk(blockchain_file)
+                    logger.info("Auction result persisted to blockchain")
             
                 print()
                 print_success(f"Identity revealed!")
@@ -1272,6 +1289,7 @@ class AuctionNode:
         
         if removed_count > 0:
             logger.info(f"Removed {removed_count} dead sockets")
+            
 
 
 # ========== CLI MENU ====================
@@ -1608,6 +1626,7 @@ def cli_view_peers(node):
     press_enter_to_continue()
 
 
+        
 # ========== MAIN ========== #
 if __name__ == '__main__':
     import sys
@@ -1629,5 +1648,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print("\n")
     finally:
-        from cli import print_info
         print_info(f"Node {username} closed")

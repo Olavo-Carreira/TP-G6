@@ -242,4 +242,46 @@ class AuctionManager:
 
         return reveal
 
+    def load_from_blockchain(self, blockchain):
+        """Reconstruct auctions and bids from blockchain"""
+        
+        # Load auction announcements
+        auction_txs = blockchain.get_transactions_by_type('AUCTION_ANNOUNCE')
+        for tx in auction_txs:
+            data = tx['data'].copy()  # Copy to avoid modifying original
+            # Add timestamp from transaction level if missing
+            if 'timestamp' not in data:
+                data['timestamp'] = tx.get('timestamp', time.time())
+            announcement = AuctionAnnouncement.from_dict(data)
+            self.auctions[announcement.auction_id] = announcement
+            if announcement.auction_id not in self.bids:
+                self.bids[announcement.auction_id] = []
+            # Determine initial status
+            current_time = time.time()
+            if current_time > announcement.end_time:
+                self.auction_status[announcement.auction_id] = AuctionStatus.BIDDING_CLOSED
+            elif current_time >= announcement.start_time:
+                self.auction_status[announcement.auction_id] = AuctionStatus.ACTIVE
+            else:
+                self.auction_status[announcement.auction_id] = AuctionStatus.ANNOUNCED
+        
+        # Load bids
+        bid_txs = blockchain.get_transactions_by_type('BID')
+        for tx in bid_txs:
+            data = tx['data'].copy()  # Copy to avoid modifying original
+            # Add timestamp from transaction level if missing
+            if 'timestamp' not in data:
+                data['timestamp'] = tx.get('timestamp', time.time())
+            bid = Bid.from_dict(data)
+            if bid.auction_id in self.bids:
+                self.bids[bid.auction_id].append(bid)
+        
+        # Load results
+        result_txs = blockchain.get_transactions_by_type('auction_result')
+        for tx in result_txs:
+            data = tx['data']
+            auction_id = data['auction_id']
+            if auction_id in self.auction_status:
+                self.auction_status[auction_id] = AuctionStatus.COMPLETED
+
 

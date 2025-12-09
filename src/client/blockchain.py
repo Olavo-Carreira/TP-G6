@@ -153,18 +153,6 @@ class Blockchain:
         """Add block to blockchain"""
         last_block = self.get_last_block()
         
-        # Detailed debug
-        if block.previous_hash != last_block.hash:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"❌ HASH CONFLICT:")
-            logger.error(f"   Received block #{block.index}")
-            logger.error(f"   Expected previous hash: {block.previous_hash[:16]}...")
-            logger.error(f"   Local last block: #{last_block.index}")
-            logger.error(f"   Last block hash: {last_block.hash[:16]}...")
-            logger.error(f"   Chain length: {len(self.chain)}")
-            raise ValueError("Previous hash does not match")
-        
         if not block.verify_integrity():
             raise ValueError("Invalid block hash")
         
