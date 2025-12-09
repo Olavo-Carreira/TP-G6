@@ -181,70 +181,131 @@ class Blockchain:
         return block
     
     def replace_chain(self, new_chain):
-        """Merge chains"""
+        """Merge chains with conflict resolution"""
         
         local_len = len(self.chain)
         new_len = len(new_chain)
         
+        # Validate new chain
         if not self.is_chain_valid(new_chain):
             logger.warning("Received invalid chain")
             return False
         
+        # Find divergence point
         divergence_id = None
-        
         min_len = min(local_len, new_len)
         
         for i in range(1, min_len):
             if self.chain[i].hash != new_chain[i].hash:
                 divergence_id = i
-                logger.info(f"Chains diverged at #{divergence_id}")
+                logger.info(f"Chains diverged at block #{divergence_id}")
                 break
         
-        # No divergence - check lengths
+        # Case 1: No divergence - simple length comparison
         if divergence_id is None:
             if new_len > local_len:
-                logger.info(f"Accepting longer chai ({new_len} vs {local_len})")
+                logger.info(f"Accepting longer chain ({new_len} vs {local_len})")
                 self.chain = new_chain
                 self._rebuild_transaction_sets()
                 return True
             else:
+                logger.info(f"Keeping local chain (same or longer)")
                 return False
-            
-        logger.info(f"Merging chains (local: {local_len}, remote:{new_len})")
         
-        merged_txs = self._merge_divergent_transactions(
-            self.chain[divergence_id:],
-            new_chain[divergence_id:]
-        )
+        # Case 2: Divergence detected - need to merge
+        logger.info(f"Merging divergent chains (local: {local_len}, remote: {new_len})")
         
-        if merged_txs:
-            self._rebuild_from_divergence(divergence_id, merged_txs)
-            logger.info(f"Merged transactions preserved")
-            return True
-        
-        return False
+        # Decision criteria: accept longer chain as base, but preserve transactions
+        if new_len > local_len:
+            logger.info("Remote chain is longer - using as base for merge")
+            base_chain = new_chain
+            merge_blocks = self.chain[divergence_id:]
+        elif new_len < local_len:
+            logger.info("Local chain is longer - keeping as base for merge")
+            # Just merge remote transactions into local
+            merged_txs = self._merge_divergent_transactions(
+                self.chain[divergence_id:],
+                new_chain[divergence_id:]
+            )
+            if merged_txs:
+                self._rebuild_from_divergence(divergence_id, merged_txs)
+                logger.info(f"Merged {len(merged_txs)} transactions")
+                return True
+            return False
+        else:
+            # Same length - merge both
+            logger.info("Chains same length - merging both branches")
+            merged_txs = self._merge_divergent_transactions(
+                self.chain[divergence_id:],
+                new_chain[divergence_id:]
+            )
+            if merged_txs:
+                self._rebuild_from_divergence(divergence_id, merged_txs)
+                logger.info(f"Merged {len(merged_txs)} transactions")
+                return True
+            return False
     
     def _merge_divergent_transactions(self, local_blocks, remote_blocks):
         """Merge transactions from divergent blocks"""
         
         all_txs = []
         seen_hashes = set()
+        seen_key_images = set()
         
+        # Collect from local blocks
         for block in local_blocks:
             for tx in block.transactions:
                 tx_hash = hashlib.sha256(json.dumps(tx, sort_keys=True).encode()).hexdigest()
-                if tx_hash not in seen_hashes:
-                    all_txs.append(tx)
-                    seen_hashes.add(tx_hash)
+                
+                # Check for duplicate hash
+                if tx_hash in seen_hashes:
+                    continue
+                
+                # Check for duplicate key image (double-spend protection)
+                if tx.get('type') in ['AUCTION_ANNOUNCE', 'BID']:
+                    data = tx.get('data', {})
+                    ring_sig = data.get('ring_signature', {})
+                    key_image = ring_sig.get('key_image')
+                    
+                    if key_image and key_image in seen_key_images:
+                        logger.warning(f"Skipping duplicate key image from local: {tx.get('type')}")
+                        continue
+                    
+                    if key_image:
+                        seen_key_images.add(key_image)
+                
+                all_txs.append(tx)
+                seen_hashes.add(tx_hash)
         
+        # Collect from remote blocks
         for block in remote_blocks:
             for tx in block.transactions:
                 tx_hash = hashlib.sha256(json.dumps(tx, sort_keys=True).encode()).hexdigest()
-                if tx_hash not in seen_hashes:
-                    all_txs.append(tx)
-                    seen_hashes.add(tx_hash)
+                
+                # Check for duplicate hash
+                if tx_hash in seen_hashes:
+                    continue
+                
+                # Check for duplicate key image (double-spend protection)
+                if tx.get('type') in ['AUCTION_ANNOUNCE', 'BID']:
+                    data = tx.get('data', {})
+                    ring_sig = data.get('ring_signature', {})
+                    key_image = ring_sig.get('key_image')
+                    
+                    if key_image and key_image in seen_key_images:
+                        logger.warning(f"Skipping duplicate key image from remote: {tx.get('type')}")
+                        continue
+                    
+                    if key_image:
+                        seen_key_images.add(key_image)
+                
+                all_txs.append(tx)
+                seen_hashes.add(tx_hash)
         
+        # Sort by timestamp to maintain chronological order
         all_txs.sort(key=lambda tx: tx.get('timestamp', 0))
+        
+        logger.info(f"Merged {len(all_txs)} unique transactions from divergent branches")
         return all_txs
     
     def _rebuild_from_divergence(self, divergence_id, merged_txs):

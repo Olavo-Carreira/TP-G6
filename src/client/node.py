@@ -1086,6 +1086,7 @@ class AuctionNode:
                 
                 my_pubkey_bytes = serialize_key(self.public_key, is_private=False)
                 
+                winner_found = False
                 for i, ring_key in enumerate(self.ring_keys):
                     try:
                         ring_key_bytes = serialize_key(ring_key, is_private=False)
