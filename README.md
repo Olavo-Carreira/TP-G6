@@ -71,9 +71,9 @@ Local, user-specific persisted data (e.g., commitments' nonces/values needed to 
 
 ## Frameworks and References
 
-- [Python `cryptography`](https://cryptography.io/) — RSA key generation, digital signatures, X.509 certificates, symmetric encryption.
-- [Flask](https://flask.palletsprojects.com/) — HTTPS server exposing the trusted registry/timestamping endpoints.
-- Python standard library — `hashlib` (SHA-256 hashing for commitments and blockchain), `ssl`, `json`, `time`.
+- [Python `cryptography`](https://cryptography.io/) - RSA key generation, digital signatures, X.509 certificates, symmetric encryption.
+- [Flask](https://flask.palletsprojects.com/) - HTTPS server exposing the trusted registry/timestamping endpoints.
+- Python standard library - `hashlib` (SHA-256 hashing for commitments and blockchain), `ssl`, `json`, `time`.
 - Cryptographic concepts applied: ring signatures (signer-ambiguous authentication), commitment schemes (hide-then-reveal integrity), trusted timestamping (signed hash + time), and a simple blockchain (hash-linked ledger of transactions).
 
 ## Disclaimer
